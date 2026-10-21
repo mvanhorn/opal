@@ -1,4 +1,4 @@
-"""OPAL (Optimizer with an Agent in the Loop): a coding agent inside your training run, rewriting the optimizer while
+"""OPAL (OPtimizer with an Agent in the Loop): a coding agent inside your training run, rewriting the optimizer while
 it trains."""
 
 from .wrapper import AgentOptimizer, final_program, replay, wrap

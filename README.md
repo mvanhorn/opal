@@ -14,7 +14,7 @@
 <p align="center"><img src="docs/assets/reel.gif" width="760" alt="Training loss and task measure of agent runs against the official recipes"></p>
 -->
 
-A network is usually trained with an optimizer chosen before training starts. OPAL (Optimizer with an Agent in the Loop)
+A network is usually trained with an optimizer chosen before training starts. OPAL (OPtimizer with an Agent in the Loop)
 makes the optimizer a program that an agent keeps rewriting while the run goes on. You wrap your PyTorch optimizer
 with one line. At decision points the agent (Claude Code) reads what the run reports, then keeps or rewrites two small
 programs: the optimizer program, which turns gradients into updates at every step, and an analysis program, which
@@ -237,4 +237,4 @@ fix its programs at the next decision.
 
 MIT, see [LICENSE](LICENSE).
 
-*The name:* OPAL stands for Optimizer with an Agent in the Loop.
+*The name:* OPAL stands for OPtimizer with an Agent in the Loop.
