@@ -24,6 +24,7 @@ waited long), the message it gives the agent starts with the limit that holds.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -396,6 +397,57 @@ class MailboxBackend(Backend):
 # ----- agent side ---------------------------------------------------------------------------------------------
 
 
+def _lease_file(path, action, body, expected, stale):
+    """Serialize lease transitions on a persistent inode; the OS releases the lock after a crash.
+
+    Kept self-contained so the identical operation runs on the mailbox host over SSH.
+    A generation fences a resumed old broker's renewals, releases and response writes.
+    """
+    import fcntl
+    import json
+    import os
+    import time
+    import uuid
+    from pathlib import Path
+
+    path = Path(path).expanduser()
+    fd = os.open(str(path) + ".lock", os.O_WRONLY | os.O_CREAT, 0o600)
+    with os.fdopen(fd, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            old = json.loads(path.read_bytes())
+        except (FileNotFoundError, ValueError):
+            old = {}
+
+        def write(target, value):
+            tmp = target.with_name(target.name + "." + uuid.uuid4().hex + ".tmp")
+            try:
+                out = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(out, "wb") as stream:
+                    stream.write(json.dumps(value).encode())
+                os.replace(tmp, target)
+            finally:
+                tmp.unlink(missing_ok=True)
+
+        if action == "claim":
+            if old and old.get("attempt") == body["attempt"] and time.time() - float(old.get("t", 0)) < stale:
+                return False
+            write(path, body)
+            return dict(previous=old)
+        if not old or old.get("generation") != expected.get("generation") or old.get("attempt") != expected.get("attempt"):
+            return False
+        if action == "renew":
+            write(path, dict(old, t=time.time()))
+        elif action == "release":
+            path.unlink(missing_ok=True)
+        elif action == "answer":
+            write(path.with_name(path.name.replace("claim-", "response-", 1)), body)
+            path.unlink(missing_ok=True)
+        else:
+            raise ValueError("unknown lease action")
+        return True
+
+
 class _Folder:
     """A folder on this machine, or on another one over ssh (one shared connection)."""
 
@@ -479,6 +531,17 @@ class _Folder:
         if probe.returncode == 0:
             return False
         raise RuntimeError(f"ssh create failed ({p.returncode}): {p.stderr.decode()[-300:]}")
+
+    def lease(self, name, action, body=None, expected=None):
+        if not self.ssh:
+            return _lease_file(self._local(name), action, body, expected, CLAIM_STALE)
+        # Python is already required on the training host. No remote OPAL install is needed.
+        script = inspect.getsource(_lease_file) + "\nimport json, sys\nprint(json.dumps(_lease_file(*json.loads(sys.argv[1]))))"
+        args = json.dumps([f"{self.path}/{name}", action, body, expected, CLAIM_STALE])
+        p = self._sh("python3 -c " + shlex.quote(script) + " " + shlex.quote(args))
+        if p.returncode != 0:
+            raise RuntimeError(f"ssh lease failed ({p.returncode}): {p.stderr.decode()[-300:]}")
+        return json.loads(p.stdout)
 
     def remove(self, name):
         if not self.ssh:
@@ -613,7 +676,9 @@ def _serve_one(box, backend, workdir, ssh, poll, run, log, keep_serving=False, g
                     root.write(f"{cur}/broker-alive", json.dumps(body).encode())
                 claim = state["claim"]
                 if claim is not None:
-                    root.write(claim[0], json.dumps(dict(claim[1], t=time.time())).encode())
+                    if not root.lease(claim[0], "renew", expected=claim[1]) and state["claim"] is claim:
+                        log("broker: lost request lease to another generation; stopping the agent")
+                        backend.cancel()
             except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
                 log(f"broker: heartbeat failed: {exc}")
             until = time.time() + BEAT_SECONDS
@@ -630,21 +695,18 @@ def _serve_one(box, backend, workdir, ssh, poll, run, log, keep_serving=False, g
 
 
 def _claim(folder, k, attempt, me, log):
-    """Claim request k for this broker. True if it is ours now (new, our own from before a restart, or taken over from
-    a broker that stopped refreshing it)."""
+    """Atomically acquire a fresh generation, including stale and previous-attempt takeovers."""
     name = f"claim-{k:04d}.json"
-    body = dict(broker=me, attempt=attempt, t=time.time())
-    if folder.create(name, json.dumps(body).encode()):
-        return True
-    old = _json(folder.read(name))
-    if old.get("broker") == me or old.get("attempt") != attempt:
-        folder.write(name, json.dumps(body).encode())  # ours from before a restart, or a claim of another attempt
-        return True
-    if time.time() - float(old.get("t", 0)) < CLAIM_STALE:
-        return False
-    log(f"broker: taking over request {k} from broker {old.get('broker')}, which stopped answering")
-    folder.remove(name)
-    return folder.create(name, json.dumps(body).encode())
+    body = dict(broker=me, attempt=attempt, t=time.time(), generation=uuid.uuid4().hex)
+    won = folder.lease(name, "claim", body=body)
+    if won:
+        folder._held = {name: body}
+        old = won["previous"]
+        if old:
+            log(f"broker: taking over request {k} from broker {old.get('broker')}, which stopped answering")
+    else:
+        log(f"broker: request {k} lease belongs to another broker; backing off")
+    return bool(won)
 
 
 def _timeout_for(backend, req, log):
@@ -759,8 +821,10 @@ def _serve(root, backend, workdir, ssh, poll, run, log, beat_state, keep_serving
     while True:
         try:
             if unsent is not None:
-                folder.write(f"response-{unsent[0]:04d}.json", unsent[2])
-                log(f"broker: wrote the answer to request {unsent[0]} after a failed write")
+                if not folder.lease(f"claim-{unsent[0]:04d}.json", "answer", body=_json(unsent[2]), expected=unsent[3]):
+                    log(f"broker: request {unsent[0]} lease was lost; discarded the late answer")
+                else:
+                    log(f"broker: wrote the answer to request {unsent[0]} after a failed write")
                 unsent = None
             pending = _pending(folder)
             done = folder.read("done")
@@ -807,14 +871,16 @@ def _serve(root, backend, workdir, ssh, poll, run, log, beat_state, keep_serving
             continue
         fresh = False
         resp, payload = answered
+        held = beat_state["claim"][1]
         beat_state["claim"] = None
         state_f.write_text(json.dumps(dict(backend=backend.state()), indent=1))
         try:
-            folder.write(f"response-{k:04d}.json", payload)
-            folder.remove(f"claim-{k:04d}.json")
+            if not folder.lease(f"claim-{k:04d}.json", "answer", body=resp, expected=held):
+                log(f"broker: request {k} lease was lost; discarded the answer")
+                continue
         except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
             log(f"broker: could not write the answer to request {k} ({exc}); trying again")
-            unsent = (k, attempt, payload)
+            unsent = (k, attempt, payload, held)
         idle_since = time.time()
         failed = resp.get("error") or resp.get("returncode") not in (0, None)
         why = f": {error_tail(resp.get('error') or 'no error text')}" if failed else ""
@@ -846,10 +912,11 @@ def _answer_request(folder, backend, work, ws, run, k, attempt, fresh, beat_stat
             beat_state[f"said-{k}"] = True
             log(f"broker: request {k} is being answered by another broker")
         return None
+    held = folder._held[f"claim-{k:04d}.json"]
     if _json(folder.read(f"response-{k:04d}.json")).get("attempt") == attempt:
-        folder.remove(f"claim-{k:04d}.json")  # another broker answered it and let go of its claim before ours
+        folder.lease(f"claim-{k:04d}.json", "release", expected=held)  # another broker answered it and let go of its claim before ours
         return None
-    beat_state["claim"] = (f"{run}/claim-{k:04d}.json", dict(broker=beat_state["me"], attempt=attempt))
+    beat_state["claim"] = (f"{run}/claim-{k:04d}.json", held)
     folder.remove(f"unavailable-{k:04d}.json")  # left by a broker that stopped while its agent was unavailable
     req["absent"] = _json(folder.read(f"absent-{k:04d}.json")).get("seconds", 0.0)  # the run had no broker this long
     _sync_workspace(folder, ws, req, log)
@@ -864,6 +931,9 @@ def _answer_request(folder, backend, work, ws, run, k, attempt, fresh, beat_stat
     if timeout is not None:
         backend.timeout = timeout
     message = _limit_note(req, timeout) + message  # stopped earlier than the run said: the agent is told
+    if not folder.lease(f"claim-{k:04d}.json", "renew", expected=held):
+        log(f"broker: request {k} lease was lost before starting the agent; backing off")
+        return None
     (rec / "message.txt").write_text(message)
     watching = dict(on=True)
     backend.log = lambda text, k=k: log(f"broker: request {k}: {redact_secrets(text)}")
@@ -872,6 +942,11 @@ def _answer_request(folder, backend, work, ws, run, k, attempt, fresh, beat_stat
         """Stop the agent if the run ends or cancels this request while the agent works."""
         while watching["on"]:
             try:
+                if (_json(folder.read(f"claim-{k:04d}.json")).get("generation") != held["generation"]
+                        and watching["on"]):
+                    log(f"broker: request {k} lease was lost; stopping the agent")
+                    backend.cancel()
+                    return
                 c = folder.read(f"cancel-{k:04d}.json")
                 d = folder.read("done")
                 if (c and _json(c).get("attempt") == attempt) or d is not None:

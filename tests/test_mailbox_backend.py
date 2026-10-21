@@ -353,13 +353,13 @@ def test_a_claim_being_written_cannot_be_acquired_by_two_brokers(tmp_path, monke
         return real_fdopen(fd, *args, **kwargs)
 
     creator = threading.Thread(
-        target=lambda: results.__setitem__("first", mailbox._claim(folder, 1, "attempt", "first", lambda m: None))
+        target=lambda: results.__setitem__("first", folder.create("claim-0001.json", b'{"broker":"first"}'))
     )
     monkeypatch.setattr(mailbox.os, "fdopen", pause_before_writing)
     try:
         creator.start()
         assert entered.wait(10)
-        results["second"] = mailbox._claim(folder, 1, "attempt", "second", lambda m: None)
+        results["second"] = folder.create("claim-0001.json", b'{"broker":"second"}')
     finally:
         release.set()
         creator.join(10)
@@ -466,15 +466,15 @@ def test_an_answer_whose_write_fails_is_written_again_not_asked_again(tmp_path, 
     box = tmp_path / "box"
     ws = workspace(tmp_path)
     mb = mailbox_for(tmp_path, box)
-    real, failed = _Folder.write, []
+    real, failed = _Folder.lease, []
 
-    def flaky(self, name, data):
-        if name.startswith("response-") and not failed:
+    def flaky(self, name, action, body=None, expected=None):
+        if action == "answer" and not failed:
             failed.append(name)
             raise RuntimeError("ssh write failed (255): connection reset")
-        return real(self, name, data)
+        return real(self, name, action, body=body, expected=expected)
 
-    monkeypatch.setattr(_Folder, "write", flaky)
+    monkeypatch.setattr(_Folder, "lease", flaky)
     calls = []
     t = serve(box, CallableBackend(lambda w, m, s: calls.append(m) or "once"), tmp_path / "work", keep_serving=True)
     out = mb.decide(ws, "m", "s", tmp_path)

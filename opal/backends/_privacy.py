@@ -9,11 +9,12 @@ _SECRET = re.compile(
     r"(?<![A-Za-z0-9_])(?:sk-ant-|sk-|ghp_|github_pat_)[A-Za-z0-9_\-]{16,}|"
     r"(?<![A-Za-z0-9_])hf_[A-Za-z0-9]{16,}(?![A-Za-z0-9_])|"
     r"(?<![A-Za-z0-9_])AKIA[A-Z0-9]{16}(?![A-Za-z0-9_])|"
-    r"(?i:\bBearer)\s+[^\s\"'<>\\,;{}\[\]]+",
+    r"(?i:\bBearer)\s+[^\s\"'<>\\,;{}\[\]&]+|"
+    r"(?i:\baccess_token)=([^\s&\"'<>]+)",
 )
 _ESCAPE = re.compile(r'\\(?:u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2}|[\\/"\'abfnrtv])|%[0-9a-fA-F]{2}')
-_STRING_JOIN = re.compile(r"""["']\s+["']""")
-_ESCAPE = re.compile(_ESCAPE.pattern + "|" + _STRING_JOIN.pattern)
+_STRING_JOIN = re.compile(r"""(?:\"{3}|'{3}|(?<!')'(?!'')|(?<!\")\"(?!\"\"))\s*(?:[bBuUrR]{0,2})(?:\"{3}|'{3}|'(?!')|\"(?!\"))""")
+_ESCAPE = re.compile(_ESCAPE.pattern + "|" + _STRING_JOIN.pattern + r"|(?i:(?<=Bearer))\+")
 _SIMPLE = {'a': '\a', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t', 'v': '\v'}
 _DECODE_DEPTH = 8
 _DECODE_LENGTH = 65_536
@@ -30,7 +31,7 @@ def _decoded_spans(text):
     overlap = 4096
     for offset in range(0, len(text), _DECODE_LENGTH - overlap):
         decoded = text[offset:offset + _DECODE_LENGTH]
-        if '\\' not in decoded and '%' not in decoded and not _STRING_JOIN.search(decoded):
+        if '\\' not in decoded and '%' not in decoded and '+' not in decoded and not _STRING_JOIN.search(decoded):
             continue
         positions = [(offset + i, offset + i + 1) for i in range(len(decoded))]
         for _ in range(_DECODE_DEPTH):
@@ -41,6 +42,8 @@ def _decoded_spans(text):
                 escape = match[0]
                 if escape[0] in "\"'":
                     char = ""  # adjacent Python string literals, as printed in diagnostics/reprs
+                elif escape == "+":
+                    char = " "  # application/x-www-form-urlencoded bearer separator
                 elif escape[0] == '%':
                     char = chr(int(escape[1:], 16))
                 elif escape[1] in 'uUx':

@@ -4,6 +4,7 @@ crashed after its trial window in an earlier attempt."""
 from __future__ import annotations
 
 import bisect
+import copy
 import io
 import json
 import shutil
@@ -17,6 +18,21 @@ from .. import programs
 from ..agent import Run, now_stamp
 from .nested import devices, restore_devices
 from .schedulers import follows
+
+
+_OBSERVATION_LISTS = (
+    "_float_losses", "_pending_losses", "_analysis_losses", "_analysis_metrics", "_metrics_new",
+    "_shown_new", "metrics", "reports", "errors", "_reasons", "_skipped",
+)
+
+
+def _empty_observations(update):
+    return dict(
+        **{name: [] for name in _OBSERVATION_LISTS},
+        _losses_from=update + 1, _pending_from=update + 1, _pending_omitted=0, _reports_made=0,
+        _nonfinite_episode=False, _skips_in_a_row=0, _skip_alarm=False,
+        _last_applied=None, _last_answer=None, _observed_loss=None, activations={},
+    )
 
 
 class CheckpointMixin:
@@ -75,6 +91,7 @@ class CheckpointMixin:
             event_offset = None
         return dict(
             opal=1,
+            observations=self._observation_state(),
             update=self.update,
             version=self.version,
             files=self.files,
@@ -103,6 +120,14 @@ class CheckpointMixin:
             decision_schedule=self._schedule_segments if getattr(self, "_schedule_changed", False) else None,
             estimated=getattr(self, "_estimated", False),
         )
+
+    def _observation_state(self):
+        values = {name: getattr(self, name) for name in _empty_observations(self.update)}
+        values["reports"], values["errors"] = list(self.reports), list(self.errors)
+        if torch.is_tensor(self._observed_loss):
+            values["_observed_loss"] = self._observed_loss.detach().clone()
+        values["loss_buffer"] = self._loss_buf[:self._loss_n].detach().clone()
+        return copy.deepcopy(values)
 
     def _continue_run_dir(self, old):
         """On resume, keep writing into the checkpoint's run folder when this run's folder was auto-named and that folder
@@ -255,7 +280,9 @@ class CheckpointMixin:
         if getattr(self, "_integrity", None) is not None:  # misc/integrity.py: the sampled history is not this run's
             self._integrity.reset()
         self.version = state["version"] - (0 if crashed else 1)
-        err = self._install(choice if crashed else files, previous=None, handover=False)
+        # Existing checkpoints may contain values outside today's new-program allowlist. The checkpoint
+        # loader already reconstructed them; do not reject a legacy program's initial bookkeeping state.
+        err = self._install(choice if crashed else files, previous=None, handover=False, restoring=True)
         if err:
             raise RuntimeError(f"opal: the checkpointed programs failed to load:\n{err}")
         with programs.keep_param_group_identity():  # before the program's own state, which may hold them too
@@ -282,7 +309,22 @@ class CheckpointMixin:
         if state.get("decision_schedule") is not None and self.rank0:
             self._set_schedule([list(seg) for seg in state["decision_schedule"]])
         self._sched_i = bisect.bisect_right(self.schedule, self.update)
-        self._losses_from = self._pending_from = self.update + 1
+        observations = _empty_observations(self.update)
+        observations.update(copy.deepcopy(state.get("observations", {})))
+        loss_buffer = observations.pop("loss_buffer", None)
+        self._loss_n = 0 if loss_buffer is None else loss_buffer.numel()
+        self._loss_buf = torch.zeros(max(self.default_every, self._loss_n), dtype=torch.float32,
+                                     device=self.device)
+        if self._loss_n:
+            self._loss_buf[:self._loss_n].copy_(loss_buffer)
+        # Restore only known fields, keeping the report/error bounds and clearing legacy buffers.
+        for name in _empty_observations(self.update):
+            if name in ("reports", "errors"):
+                target = getattr(self, name)
+                target.clear()
+                target.extend(observations[name])
+            else:
+                setattr(self, name, observations[name])
         self._next_analysis = state.get("next_analysis") or self.update + self.every  # the analysis keeps its grid
         self._audit_at = self.update + 2
         # A checkpoint has no pre-swap rollback copy or evidence that ranks agreed before its updater was built.

@@ -9,7 +9,6 @@ import hashlib
 import inspect
 import io
 import json
-import pickle
 import re
 import sys
 import types
@@ -156,23 +155,8 @@ def forget(tag: str) -> None:
         del sys.modules[name]
 
 
-class _ProgramRefPickler(pickle.Pickler):
-    """Pickles a state_dict without its tensor data (persistent ids) and refuses anything that would be stored as a
-    reference to the agent's own program modules."""
-
-    def persistent_id(self, obj):
-        return "tensor" if isinstance(obj, torch.Tensor) else None
-
-    def reducer_override(self, obj):
-        mod = getattr(obj, "__module__", None) if isinstance(obj, (type, types.FunctionType)) else type(obj).__module__
-        if isinstance(mod, str) and mod.startswith("opal_program_"):
-            what = getattr(obj, "__qualname__", type(obj).__qualname__)
-            raise pickle.PicklingError(f"{what} is defined in your program files")
-        return NotImplemented
-
-
 def unpicklable(obj) -> list:
-    """Reject unsafe agent state before saving, accepting values supported by the installed weights-only loader.
+    """Reject agent state outside a closed allowlist without invoking serialization hooks.
 
     Pickleability alone does not imply compatibility with torch.load(weights_only=True). The user's starting
     optimizers remain exempt at the call sites; this contract is for state returned by agent programs.
@@ -180,53 +164,43 @@ def unpicklable(obj) -> list:
     active = set()
 
     def plain(value, depth=0):
-        if type(value) in (type(None), bool, int, float, complex, str, bytes):
-            return
-        if type(value) in (torch.Tensor, torch.nn.Parameter):
-            plain(vars(value), depth + 1)  # tensor Python attributes are serialized too
-            return
-        if type(value) in (torch.Size, torch.dtype, torch.device):
-            return
-        if type(value) in (set, frozenset):
-            # Support depends on the torch version, even when the elements themselves are plain.
-            stream = io.BytesIO()
-            torch.save(type(value)(), stream)
-            stream.seek(0)
-            torch.load(stream, weights_only=True)
-        # Ask the installed weights-only loader about other value types (layout, qscheme, safe globals,
-        # etc.), rather than maintaining a second, inevitably narrower allowlist. The common Tensor/Parameter
-        # path above skips their data. Containers are traversed separately to reject cycles.
-        if type(value) not in (dict, Counter, OrderedDict, list, tuple, set, frozenset):
-            stream = io.BytesIO()
-            torch.save(value, stream)
-            stream.seek(0)
-            try:
-                torch.load(stream, weights_only=True)
-            except Exception as exc:
-                raise TypeError(f"non-plain state type {type(value).__module__}.{type(value).__qualname__}") from exc
-            return
-        if id(value) in active:
-            raise TypeError("cyclic state container")
+        kind = type(value)
         if depth > 100:
             raise TypeError("state nesting exceeds 100 levels")
+        if kind in (set, frozenset, torch.memory_format):
+            # Probe only library-owned values, never a live object's reducer. Loader support differs
+            # across torch versions; accepting an unsupported builtin would still break safe resume.
+            stream = io.BytesIO()
+            torch.save(kind() if kind in (set, frozenset) else value, stream)
+            stream.seek(0)
+            torch.load(stream, weights_only=True)
+        if kind in (type(None), bool, int, float, complex, str, bytes,
+                    torch.Size, torch.dtype, torch.device, torch.layout, torch.memory_format):
+            return
+        if kind not in (torch.Tensor, torch.nn.Parameter, dict, Counter, OrderedDict,
+                        list, tuple, set, frozenset):
+            raise TypeError(f"non-plain state type {kind.__module__}.{kind.__qualname__}")
+        if id(value) in active:
+            raise TypeError("cyclic state container")
         active.add(id(value))
         try:
-            if isinstance(value, dict):
+            if kind in (torch.Tensor, torch.nn.Parameter):
+                plain(vars(value), depth + 1)  # Python attributes are serialized too
+            elif kind in (dict, Counter, OrderedDict):
                 for key, item in value.items():
                     plain(key, depth + 1)
                     plain(item, depth + 1)
+                if kind in (Counter, OrderedDict):
+                    plain(vars(value), depth + 1)
             else:
                 for item in value:
                     plain(item, depth + 1)
-            if type(value) in (Counter, OrderedDict):
-                plain(vars(value), depth + 1)
         finally:
             active.remove(id(value))
 
     try:
-        plain(obj)
-        _ProgramRefPickler(io.BytesIO(), protocol=pickle.HIGHEST_PROTOCOL).dump(obj)
-    except Exception as exc:  # PicklingError, AttributeError (local objects), TypeError (files, locks)
+        plain(obj)  # Never pickle live state here: even a rejected reducer can execute user code.
+    except Exception as exc:
         return [f"{type(exc).__name__}: {exc}"[:300]]
     return []
 

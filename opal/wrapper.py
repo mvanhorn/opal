@@ -713,7 +713,7 @@ class AgentOptimizer(
             raise TypeError(f"EVERY must be a positive int, got {e!r}")
         return e
 
-    def _build(self, files, version, previous, updater=True):
+    def _build(self, files, version, previous, updater=True, restoring=False):
         """Load `files` and, unless only the analysis side changed, build the updater. Raises on any problem and
         registers nothing on failure."""
         if self.rank0:
@@ -735,7 +735,7 @@ class AgentOptimizer(
                     for method in methods:
                         if not callable(getattr(up, method, None)):
                             raise TypeError(f"build() must return an updater with a callable {method} method")
-                    bad = programs.unpicklable(up.state_dict()) if not starting else []
+                    bad = programs.unpicklable(up.state_dict()) if not (starting or restoring) else []
                 if bad:
                     raise TypeError(
                         "state_dict() must contain tensors and weights-only-safe values in acyclic containers, "
@@ -752,7 +752,7 @@ class AgentOptimizer(
             raise
         return an, up, every, groups
 
-    def _install(self, files, previous, first=False, updater=True, handover=True):
+    def _install(self, files, previous, first=False, updater=True, handover=True, restoring=False):
         """Make `files` the next version. updater=False: only analysis.py (or its helpers) changed, so the running
         updater object and its state stay. On failure on any rank, keep the current programs (with their
         hyperparameters as they were) and return the error text. handover=False: the caller puts the user's schedule
@@ -765,7 +765,7 @@ class AgentOptimizer(
         user_dtypes = self._user_state_dtypes() if swap else None  # misc/precision.py
         err = None
         try:
-            an, up, every, groups = self._build(files, version, previous, updater)
+            an, up, every, groups = self._build(files, version, previous, updater, restoring=restoring)
         except programs.AGENT_ERRORS:
             err = traceback.format_exc(limit=6)[-3000:]
         if not self._agree(err is None):

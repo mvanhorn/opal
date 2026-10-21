@@ -2,6 +2,11 @@
 
 ## 0.3.5 (2026-10-21)
 
+- Check updater state with a closed allowlist without invoking custom serialization hooks.
+- Redact form-encoded bearers, access tokens, triple-quoted, adjacent and bytes literals in diagnostics.
+- Serialize mailbox lease takeovers and fence stale renewals, releases and responses by generation (#1).
+- Save pending losses, analysis reports and authorized metrics so checkpoint resumes preserve observations (#3).
+
 - Preserve Accelerate's public optimizer state, parameter groups and defaults through a checkpoint adapter.
 - Resolve conjugate and negative parameter views before DDP byte fingerprints.
 - Accept weights-only-safe updater values and preserve the starting updater exemption after analysis edits.

@@ -103,7 +103,7 @@ def test_conjugate_and_negative_views_two_real_gloo_ranks(tmp_path):
 
 
 @pytest.mark.parametrize('value', [torch.Size([2, 3]), torch.float32, torch.device('cpu'),
-                                   {1, 2}, bytearray(b'ab'), torch.strided, torch.per_tensor_affine])
+                                   {1, 2}, torch.strided])
 def test_weights_only_safe_state_types(value):
     stream = io.BytesIO()
     torch.save(value, stream)
