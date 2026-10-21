@@ -119,11 +119,11 @@ model trains. OPAL is cloned at <PATH TO OPAL>. Please set it up for this projec
 ## Start by hand
 
 ```bash
-pip install opal-optimizer           # or: git clone, then pip install -e ".[examples]"
+pip install "git+https://github.com/xingjian-bai/opal"   # or: git clone, then pip install -e ".[examples]"
 opal doctor                          # torch and Claude Code ready?
 ```
 
-The package is called `opal-optimizer` on PyPI, because `opal` there is an unrelated web framework. Both install as
+The package is called `opal-optimizer`, because `opal` on PyPI is an unrelated web framework. Both install as
 `import opal`, so do not install both.
 
 ```python
@@ -193,7 +193,7 @@ Trainer: [Try it without an agent](docs/GUIDE.md#try-it-without-an-agent).
 | `every` | 50 | Steps between checks: losses are read, a non-finite loss is caught, the analysis program runs. |
 | `blocking` | `True` | `False` or `"auto"` to keep training while the agent thinks. |
 | `max_cost_usd` | none | Stop asking the agent once it has spent this much. |
-| `backend_options` | `{}` | `model=` (default `claude-opus-5-5`), `effort=` (default `high`) and `timeout=`. A failed agent turn is retried with growing pauses; an agent that is unavailable (login, usage limit, outage) is waited for. Details in the [guide](docs/GUIDE.md#cost-and-limits). |
+| `backend_options` | `{}` | `model=` (default `claude-opus-5-5`), `effort=` (default `high`) and `timeout=`. A failed agent turn is retried with growing pauses; an agent that is unavailable (login, usage limit, outage) is waited for, with no deadline unless you set `unavailable_timeout=`. Details in the [guide](docs/GUIDE.md#cost-and-limits). |
 | `prompt` | `"neutral"` | The agent's instructions: the facts of the run and the protocol, with no recommended values. `"aggressive"` adds a review of every group's hyperparameters at each decision. You can also pass the path of your own template. |
 | `validation` | none | `N`: your script evaluates a held-out development set about every N updates, at times it does not announce, and reports it with `opt.report_dev(loss=..., accuracy=...)`. The agent sees each result. See the [guide](docs/GUIDE.md#what-it-can-and-cannot-change). |
 | `eval_integrity` | on with `validation` | Flags a run whose program moves the parameters somewhere else for an evaluation and back afterwards. The agent is not told. |
@@ -213,7 +213,7 @@ with Codex CLI 0.160.1). Our single runs on one H100, Codex against plain: `gpt_
 
 ## Status and limitations
 
-v0.3.5, under active development. Tested on one GPU and on DDP within one node (NCCL, eager and `torch.compile`).
+v0.3.4, under active development. Tested on one GPU and on DDP within one node (NCCL, eager and `torch.compile`).
 Multi-node, FSDP and DeepSpeed are not supported. Accelerate works if you wrap after `accelerator.prepare`, without
 fp16 GradScaler or Accelerate's gradient accumulation; the HF Trainer works through `opal.hf.OpalTrainer`. Both are
 tested on CPU. Lightning should work through `opt.observe(loss)` but we have not tried it. The agent can make a run

@@ -139,8 +139,6 @@ Keep the Trainer's `max_grad_norm`. Moving clipping into OPAL can change roundin
 byte-identical.
 
 ```bash
-pip install "opal-optimizer[hf]"
-# or install from git:
 pip install "opal-optimizer[hf] @ git+https://github.com/xingjian-bai/opal"
 ```
 
@@ -414,7 +412,7 @@ schedule.
   Two runs with the same answers can differ.
 - To turn the agent off mid-run, resume with `backend="keep"` or start a fresh run with `opal.replay(...)`.
 - For the Hugging Face Trainer, use `opal.hf.OpalTrainer` in place of `Trainer`.
-  Install it with `pip install "opal-optimizer[hf]"`:
+  Install it with `pip install "opal-optimizer[hf] @ git+https://github.com/xingjian-bai/opal"`:
 
   ```python
   from opal.hf import OpalTrainer
