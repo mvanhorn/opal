@@ -45,6 +45,8 @@ decision in all of them, as OPAL does by default.
 
 Where it did not help, the folder says so: on modded-nanogpt, a heavily tuned
 benchmark, one run on OPAL 0.2.0 with the neutral prompt ended at 3.2878, worse than record #36.
+Your numbers may differ from ours: the agent can make different choices from one run to the next, and hosted agent
+models change between versions. Most of our reruns on this release still ended ahead of their starting recipe.
 More in the [blog post](https://xingjianbai.com/reactive-optimizers/).
 [What we checked](docs/checks.md) · [Run times and agent costs](docs/times.md)
 
@@ -79,6 +81,8 @@ CLI against a local mock, `OPAL_REAL_CLI=1`).
 | `examples/overfit/train.py` | ResNet-18 on CIFAR-10 with AdamW, designed to test overfitting (10% wrong labels, or 20% of the data); `--validation` shows the agent a development set | `--setting label10 --validation --test-at-end`: test accuracy 73.53% → 80.42% | → 39 min |
 
 With `--opal` these scripts schedule up to 50 decisions (34–46 were asked in these runs), so most of the time is training waiting for the agent.
+Keep the default `blocking=True` for short runs: with `--blocking false`, the cifar10, gpt_small and diffusion_mnist
+scripts finished training before the agent's first answer, so nothing changed.
 
 Each runs plain by default; `--opal` wraps the optimizer and `--backend keep` is a dry run with no agent.
 
