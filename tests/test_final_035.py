@@ -248,3 +248,16 @@ def test_safe_loader_types_outside_closed_allowlist_are_rejected_for_new_state(v
     stream.seek(0)
     torch.load(stream, weights_only=True)
     assert programs.unpicklable(value)
+
+
+@pytest.mark.parametrize('kind', [Counter, OrderedDict])
+def test_state_guard_does_not_call_overridden_container_methods(kind):
+    calls = []
+    class Custom:
+        def __getstate__(self):
+            calls.append(True)
+            return []
+    value = kind()
+    value.items = Custom().__getstate__
+    assert programs.unpicklable(value)
+    assert calls == []

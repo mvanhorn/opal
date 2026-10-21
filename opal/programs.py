@@ -187,7 +187,7 @@ def unpicklable(obj) -> list:
             if kind in (torch.Tensor, torch.nn.Parameter):
                 plain(vars(value), depth + 1)  # Python attributes are serialized too
             elif kind in (dict, Counter, OrderedDict):
-                for key, item in value.items():
+                for key, item in dict.items(value):
                     plain(key, depth + 1)
                     plain(item, depth + 1)
                 if kind in (Counter, OrderedDict):
