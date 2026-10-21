@@ -1,0 +1,72 @@
+--- a/train.py
++++ b/train.py
+@@ -205,6 +205,26 @@
+         drop_last=True
+     )
+     logger.info(f"Dataset contains {len(dataset):,} images ({args.data_path})")
++    total_steps = args.max_steps or args.epochs * len(loader)
++    if args.opal:  # OPAL: a coding agent rewrites the optimizer while the model trains
++        import opal
++
++        opt = opal.wrap(
++            opt,
++            model,
++            total_steps=total_steps,
++            goal=(
++                f"{args.model} trained from scratch on ImageNet {args.image_size}x{args.image_size} (SD-VAE latents) "
++                f"for {total_steps:,} updates; judged by the FID of samples from the EMA weights after the last "
++                "update (lower is better)"
++            ),
++            backend=args.opal_backend,
++            max_cost_usd=args.opal_max_cost_usd,
++            epochs=round(total_steps / len(loader), 1),
++            train_size=f"{len(dataset):,} images",
++            batch_size=f"{args.global_batch_size} images",
++            same_order_each_epoch=False,
++        )
+ 
+     # Prepare models for training:
+     update_ema(ema, model.module, decay=0)  # Ensure EMA is initialized with synced weights
+@@ -240,6 +260,8 @@
+         sampler.set_epoch(epoch)
+         logger.info(f"Beginning epoch {epoch}...")
+         for x, y in loader:
++            if train_steps >= total_steps:
++                break
+             x = x.to(device)
+             y = y.to(device)
+             with torch.no_grad():
+@@ -250,7 +272,7 @@
+             loss = loss_dict["loss"].mean()
+             opt.zero_grad()
+             loss.backward()
+-            opt.step()
++            opt.step(loss=loss) if args.opal else opt.step()  # OPAL: pass the loss
+             update_ema(ema, model.module)
+ 
+             # Log loss values:
+@@ -307,7 +329,11 @@
+                 if args.wandb:
+                     wandb_utils.log_image(out_samples, train_steps)
+                 logging.info("Generating EMA samples done.")
+-
++        if train_steps >= total_steps:
++            break
++
++    if args.opal:
++        opt.close()
+     model.eval()  # important! This disables randomized embedding dropout
+     # do any sampling/FID calculation/etc. with ema (or model) in eval mode ...
+ 
+@@ -335,6 +361,11 @@
+     parser.add_argument("--wandb", action="store_true")
+     parser.add_argument("--ckpt", type=str, default=None,
+                         help="Optional path to a custom SiT checkpoint")
++    parser.add_argument("--max-steps", type=int, default=None, help="stop after this many updates")
++    parser.add_argument("--opal", action="store_true", help="wrap the optimizer with opal.wrap")
++    parser.add_argument("--opal-max-cost-usd", type=float, default=None,
++                        help="stop asking the agent after this much spend")
++    parser.add_argument("--opal-backend", default="claude", help="claude, keep (no agent) or mailbox:<dir>")
+ 
+     parse_transport_args(parser)
+     args = parser.parse_args()

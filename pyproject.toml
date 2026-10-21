@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77"]  # license as an SPDX expression
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opal-optimizer"
+version = "0.3.3"
+description = "A coding agent inside your training run, rewriting the optimizer while it trains"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Xingjian Bai" }, { name = "Jia-Hao Liang" }, { name = "Jayden Teoh" }, { name = "Vincent Sitzmann" }]
+requires-python = ">=3.9"
+dependencies = ["torch>=2.3", "numpy"]  # numpy: without it, torch warns "Failed to initialize NumPy" at every import
+
+[project.optional-dependencies]
+examples = ["torchvision", "numpy", "pyarrow", "pillow"]
+test = ["pytest"]
+hf = ["transformers", "accelerate"]  # opal.hf.OpalTrainer
+
+[project.scripts]
+opal = "opal.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["opal*"]
+
+[tool.setuptools.package-data]
+opal = ["prompts/*.md", "prompts/*.py", "defaults.json"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true
