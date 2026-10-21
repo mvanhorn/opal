@@ -377,8 +377,8 @@ inputs in `inbox/`, `reference/`) and drops inbox files the run no longer has. T
 `scratch/`; small text files only, 256 KB each, 2 MB per answer) come back with each answer and are kept in the run's
 workspace, so its notes survive a change of broker; a broker that has no conversation of the run's agent tells the agent
 so in its first message. A broker claims a request (`claim-NNNN.json`, created exclusively) before it starts the agent,
-so two brokers on one box never both answer (and bill) it; a claim its broker has not refreshed for 2 minutes is taken
-over. The broker runs the agent for at most the time the agent was told it has (the mailbox `timeout`, 6 hours by
+so two brokers on one box do not both answer (and bill) a fresh request; a claim its broker has not refreshed for 2
+minutes is taken over, and that takeover is not yet atomic (issue #1): run one broker per run. The broker runs the agent for at most the time the agent was told it has (the mailbox `timeout`, 6 hours by
 default), less the time the request waited and a minute to write the answer. A broker `--timeout` shorter than that is
 kept, and the broker's log says so; whenever the broker stops the agent sooner than the run told it (that `--timeout`,
 or a request that waited long for a broker), the message the agent gets starts with the limit that holds ("This
