@@ -43,7 +43,7 @@ class CheckpointMixin:
             last = tb.strip().splitlines()[-1]
             self._warn("state-raised", f"the updater's state_dict() raised ({last}); checkpoints leave it out")
         else:
-            bad = programs.unpicklable(up) if self.files != self._starting_files else []
+            bad = programs.unpicklable(up) if self.digests[0] != self._starting_digest else []
         if bad:
             msg = "the updater's state_dict() holds objects a new process could not load (" + "; ".join(bad) + ")"
             self.errors.append(
@@ -84,6 +84,7 @@ class CheckpointMixin:
             memory=mem.getvalue(),
             decisions=self.worker.k if self.worker else 0,
             cost=self.worker.cost if self.worker else 0.0,
+            unknown_cost_decisions=sorted(self.worker.unknown_cost_decisions) if self.worker else [],
             **(dict(usage=dict(self.worker.usage)) if self.worker and self.worker.usage is not None else {}),
             backend=self.worker.backend.state() if self.worker else {},
             notes_seen=self.run._notes_seen if self.run is not None else 0,
@@ -296,6 +297,7 @@ class CheckpointMixin:
         self._resume_pending = dict(crashed=crashed)
         if self.worker:
             self.worker.k, self.worker.cost = state.get("decisions", 0), state.get("cost", 0.0)
+            self.worker.unknown_cost_decisions = set(state.get("unknown_cost_decisions", []))
             self.worker.usage = dict(state["usage"]) if state.get("usage") is not None else None
             self.worker.backend.restore(state.get("backend", {}))
             self.worker.backend.setup(self.run.dir, self.run.workspace)

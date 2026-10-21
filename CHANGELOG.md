@@ -2,6 +2,15 @@
 
 ## 0.3.5 (2026-10-21)
 
+- Preserve Accelerate's public optimizer state, parameter groups and defaults through a checkpoint adapter.
+- Resolve conjugate and negative parameter views before DDP byte fingerprints.
+- Accept weights-only-safe updater values and preserve the starting updater exemption after analysis edits.
+- Redact credentials inside nested escaped JSON and exception reprs through the shared diagnostic filter.
+- Restore legacy Accelerate raw optimizer checkpoints with one warning about missing OPAL programs and progress.
+- Preserve ordinary model names, identifiers, hashes, base64 code and credential-free URLs during redaction.
+- Bound noncontiguous parameter fingerprint copies by slicing before flattening.
+- Keep pending and unreported decision costs unknown in summaries and HTML until a numeric charge arrives.
+
 - Redact API keys and bearer tokens from backend diagnostics, decision records, prompts, logs and HTML reports.
 - Reject raw optimizer parameter-set changes after wrapping, before step or zero_grad (#5).
 - Reject GradScaler steps on wrappers combining multiple optimizers.

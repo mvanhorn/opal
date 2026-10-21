@@ -4,20 +4,75 @@ import json
 import re
 
 
+# Prefixes are case sensitive and must start a token, not a suffix of a model or function name.
 _SECRET = re.compile(
-    r"(?:sk-ant-|sk-|ghp_|github_pat_|hf_)[A-Za-z0-9_\-]{8,}|"
-    r"AKIA[A-Z0-9]{16,}|Bearer\s+[^\s\"'<>\\,;{}\[\]]+",
-    re.IGNORECASE,
+    r"(?<![A-Za-z0-9_])(?:sk-ant-|sk-|ghp_|github_pat_|hf_)[A-Za-z0-9_\-]{16,}|"
+    r"(?<![A-Za-z0-9_])AKIA[A-Z0-9]{16}(?![A-Za-z0-9_])|"
+    r"(?i:\bBearer)\s+[^\s\"'<>\\,;{}\[\]]+",
 )
+_ESCAPE = re.compile(r'\\(?:u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2}|[\\/"\'abfnrtv])|%[0-9a-fA-F]{2}')
+_SIMPLE = {'a': '\a', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t', 'v': '\v'}
+_DECODE_DEPTH = 8
+_DECODE_LENGTH = 65_536
+
+
+def _decoded_spans(text):
+    """Find secrets in bounded decoded views and map them back to spans in the original text.
+
+    JSON strings and exception reprs can add several layers of backslashes. Decode escapes only for
+    matching, never rewrite the diagnostic itself. Windows bound both the index map and decode work;
+    overlap retains credentials straddling a window. Direct matching also covers arbitrarily long keys.
+    """
+    spans = [(m.start(), m.end()) for m in _SECRET.finditer(text)]
+    overlap = 4096
+    for offset in range(0, len(text), _DECODE_LENGTH - overlap):
+        decoded = text[offset:offset + _DECODE_LENGTH]
+        if '\\' not in decoded and '%' not in decoded:
+            continue
+        positions = [(offset + i, offset + i + 1) for i in range(len(decoded))]
+        for _ in range(_DECODE_DEPTH):
+            pieces, mapped, end = [], [], 0
+            for match in _ESCAPE.finditer(decoded):
+                pieces.append(decoded[end:match.start()])
+                mapped.extend(positions[end:match.start()])
+                escape = match[0]
+                if escape[0] == '%':
+                    char = chr(int(escape[1:], 16))
+                elif escape[1] in 'uUx':
+                    value = int(escape[2:], 16)
+                    char = chr(value) if value <= 0x10ffff else escape
+                else:
+                    char = _SIMPLE.get(escape[1], escape[1])
+                pieces.append(char)
+                mapped.extend([(positions[match.start()][0], positions[match.end() - 1][1])] * len(char))
+                end = match.end()
+            if end == 0:
+                break
+            pieces.append(decoded[end:])
+            mapped.extend(positions[end:])
+            decoded, positions = ''.join(pieces), mapped
+            spans.extend((positions[m.start()][0], positions[m.end() - 1][1]) for m in _SECRET.finditer(decoded))
+    return spans
 
 
 def redact_secrets(text):
-    """Preserve diagnostic text and JSON quoting while masking keys and bearer tokens."""
-    return _SECRET.sub("<hidden>", str(text or ""))
+    """One filter for records, subsequent prompts and HTML; preserve all noncredential source spans."""
+    text = str(text or "")
+    spans = sorted(_decoded_spans(text))
+    pieces, end = [], 0
+    for start, stop in spans:
+        if start > end:
+            pieces.append(text[end:start])
+        if stop > end:
+            if start >= end:
+                pieces.append('<hidden>')
+            end = stop
+    pieces.append(text[end:])
+    return ''.join(pieces)
 
 
 def redact_record(value):
-    """Decode JSON before filtering so escaped whitespace or key prefixes cannot bypass redaction."""
+    """Filter strings at every level of JSON diagnostics, including nested encoded strings."""
     if isinstance(value, str):
         return redact_secrets(value)
     if isinstance(value, dict):
@@ -28,7 +83,7 @@ def redact_record(value):
 
 
 def redact_stream(source, destination):
-    """Filter JSONL and plain diagnostics a line at a time, including a bearer split over two plain lines."""
+    """Filter JSONL and plain diagnostics, including a bearer split over two plain lines."""
     bearer = False
     for line in source:
         try:

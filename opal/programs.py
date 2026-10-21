@@ -172,7 +172,7 @@ class _ProgramRefPickler(pickle.Pickler):
 
 
 def unpicklable(obj) -> list:
-    """Reject unsafe agent state before saving: tensors, primitives and acyclic standard containers only.
+    """Reject unsafe agent state before saving, accepting values supported by the installed weights-only loader.
 
     Pickleability alone does not imply compatibility with torch.load(weights_only=True). The user's starting
     optimizers remain exempt at the call sites; this contract is for state returned by agent programs.
@@ -185,9 +185,26 @@ def unpicklable(obj) -> list:
         if type(value) in (torch.Tensor, torch.nn.Parameter):
             plain(vars(value), depth + 1)  # tensor Python attributes are serialized too
             return
-        # These two dict types are allowlisted by torch's weights-only loader. MultiStepLR uses Counter.
-        if type(value) not in (dict, Counter, OrderedDict, list, tuple):
-            raise TypeError(f"non-plain state type {type(value).__module__}.{type(value).__qualname__}")
+        if type(value) in (torch.Size, torch.dtype, torch.device):
+            return
+        if type(value) in (set, frozenset):
+            # Support depends on the torch version, even when the elements themselves are plain.
+            stream = io.BytesIO()
+            torch.save(type(value)(), stream)
+            stream.seek(0)
+            torch.load(stream, weights_only=True)
+        # Ask the installed weights-only loader about other value types (layout, qscheme, safe globals,
+        # etc.), rather than maintaining a second, inevitably narrower allowlist. The common Tensor/Parameter
+        # path above skips their data. Containers are traversed separately to reject cycles.
+        if type(value) not in (dict, Counter, OrderedDict, list, tuple, set, frozenset):
+            stream = io.BytesIO()
+            torch.save(value, stream)
+            stream.seek(0)
+            try:
+                torch.load(stream, weights_only=True)
+            except Exception as exc:
+                raise TypeError(f"non-plain state type {type(value).__module__}.{type(value).__qualname__}") from exc
+            return
         if id(value) in active:
             raise TypeError("cyclic state container")
         if depth > 100:

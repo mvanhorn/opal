@@ -61,7 +61,7 @@ def summary(metric, value, direction, train_seconds, opt=None, device=None) -> d
         c = decision_counts(_jsonl(run.dir / "events.jsonl"))
         out.update(
             agent_wait_seconds=round(getattr(opt, "agent_wait_seconds", 0.0), 1),
-            agent_cost_usd=round(opt.worker.cost, 4) if opt.worker is not None else 0.0,
+            agent_cost_usd=opt.worker.recorded_cost if opt.worker is not None else 0.0,
             decisions=dict(asked=c["asked"], applied=c["applied"], failed=c["failed"]),
             opal_commit=opal_commit(),
             opal_run=str(run.dir),

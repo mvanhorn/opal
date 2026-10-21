@@ -9,6 +9,25 @@ import torch
 import torch.distributed as dist
 
 
+def _parameter_chunks(tensor, limit=1_048_576):
+    """Yield logical row-major chunks without reshaping an entire noncontiguous parameter.
+
+    Narrow before making a copy. Each resolved/contiguous/CPU temporary has at most `limit` elements,
+    even for transposes, strided slices, conjugate/negative views and scalar parameters.
+    """
+    if tensor.numel() <= limit:
+        yield tensor.reshape(-1)
+    elif tensor.is_contiguous():
+        yield from tensor.view(-1).split(limit)
+    else:
+        # Split the first nontrivial axis; completed leading axes remain in logical C order.
+        axis = next(i for i, n in enumerate(tensor.shape) if n > 1)
+        per_slice = tensor.numel() // tensor.shape[axis]
+        width = max(1, limit // per_slice)
+        for start in range(0, tensor.shape[axis], width):
+            yield from _parameter_chunks(tensor.narrow(axis, start, min(width, tensor.shape[axis] - start)), limit)
+
+
 class DDPMixin:
     def _agree(self, ok: bool) -> bool:
         """True on every rank only if `ok` on every rank (one gloo all-reduce; no-op on one process)."""
@@ -36,8 +55,8 @@ class DDPMixin:
         digests = []
         for _, p in self.named:
             digest = hashlib.sha256(f"{p.dtype}:{tuple(p.shape)}".encode())
-            for chunk in p.detach().reshape(-1).split(1_048_576):
-                raw = chunk.contiguous().view(torch.uint8).cpu().numpy()
+            for chunk in _parameter_chunks(p.detach()):
+                raw = chunk.resolve_conj().resolve_neg().contiguous().view(torch.uint8).cpu().numpy()
                 digest.update(memoryview(raw))
             digests.append(list(digest.digest()))
         s = torch.tensor(digests, dtype=torch.uint8)

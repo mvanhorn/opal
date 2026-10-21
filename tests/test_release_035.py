@@ -184,7 +184,7 @@ def test_accelerate_checkpoint_restores_program_version_updates_and_next_step(tm
         acc.save_state(tmp_path / "checkpoint")
         saved = torch.load(tmp_path / "checkpoint/optimizer.bin", weights_only=True)
         assert saved.get("opal") == 1
-        assert prepared.optimizer is opt
+        assert prepared.state is opt.user_optimizers[0].state
         assert opt.update == 3 and opt.version == 1
         step(acc, model, opt)
         expected = model.weight.detach().clone()
@@ -327,7 +327,7 @@ def test_wake_reasons_do_not_accumulate_after_decision_budget_is_spent(tmp_path)
     "expression",
     [
         "__import__('pathlib').Path('cache')",
-        "{1, 2}",
+        "range(3)",
         "__import__('collections').deque([1])",
         "(lambda x: (setattr(x, 'path', __import__('pathlib').Path('cache')), x)[1])(__import__('torch').ones(1))",
         "(lambda x: (setattr(x, 'path', __import__('pathlib').Path('cache')), x)[1])(__import__('collections').Counter())",

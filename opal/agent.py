@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import os
 import secrets
 import sys
@@ -67,11 +68,18 @@ class AgentWorker:
         self.ready = None
         self.k = 0
         self.cost = 0.0
+        self.unknown_cost_decisions = set()  # a request stays unknown until it reports a numeric charge
         self.usage = None  # present only for token-reporting backends (Codex, including through a mailbox)
         self._last = None  # (k, req) of the newest request
         self.after_decision = None  # fn(k, req, resp), called once a response is recorded (a late one: in training)
         backend.setup(run.dir, run.workspace)
         (run.dir / "system.md").write_text(system_text)
+
+    @property
+    def recorded_cost(self):
+        if self.unknown_cost_decisions or self.usage is not None or self.backend.name == "codex":
+            return None
+        return round(self.cost, 4)
 
     @property
     def busy(self) -> bool:
@@ -80,6 +88,7 @@ class AgentWorker:
     def submit(self, req: dict) -> int:
         assert not self.busy
         self.k += 1
+        self.unknown_cost_decisions.add(self.k)
         self._last = (self.k, req)
         self.thread = threading.Thread(
             target=self._decide, args=(self.k, req), name=f"opal-decision-{self.k}", daemon=True
@@ -147,8 +156,10 @@ class AgentWorker:
                 errors = programs.check_syntax(files)
         except Exception:
             errors = ["could not read the edited files: " + traceback.format_exc(limit=3)[-800:]]
-        if out.get("cost_usd"):
-            self.cost += float(out["cost_usd"])
+        charge = out.get("cost_usd")
+        if isinstance(charge, (int, float)) and not isinstance(charge, bool) and math.isfinite(charge):
+            self.cost += float(charge)
+            self.unknown_cost_decisions.discard(k)
         if isinstance(out.get("usage"), dict):
             if self.usage is None:
                 self.usage = {}

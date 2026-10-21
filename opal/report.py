@@ -717,8 +717,16 @@ def write_report(run) -> Path:
     if costs:
         cost = max(cost, sum(costs)) if _number(cost) else sum(costs)
     pending = settled.get("pending_decision")
-    if pending is not None and not _number(decisions.get(pending, {}).get("response", {}).get("cost_usd")):
-        cost = None  # a cancelled call has not reported its charge yet
+    unknown = settled.get("unknown_cost_decisions", [])
+    if unknown or (pending is not None and not _number(decisions.get(pending, {}).get("response", {}).get("cost_usd"))):
+        cost = None  # pending/unreported is not free, even after the response arrived
+    elif "unknown_cost_decisions" not in settled and any(
+        e.get("kind") == "cancelled" and not any(
+            _number(decisions.get(e.get("k"), {}).get(field, {}).get("cost_usd"))
+            for field in ("response", "outcome")
+        ) for e in events
+    ):
+        cost = None  # legacy cancelled records do not carry the persistent unknown set
     summary_costs = [
         r["summary"].get("cost_usd") for r in rows if r["summary"] and _number(r["summary"].get("cost_usd"))
     ]

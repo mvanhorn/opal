@@ -50,6 +50,40 @@ from .report import LiveReport
 from . import schedule as decision_schedule
 from .summaries import Summarizer
 
+
+class _AccelerateCheckpointAdapter:
+    """Keep Accelerate's public optimizer API on the original optimizer; adapt checkpoint I/O only."""
+
+    def __init__(self, optimizer, opal):
+        object.__setattr__(self, "_optimizer", optimizer)
+        object.__setattr__(self, "_opal", opal)
+
+    def __getattr__(self, name):
+        return getattr(self._optimizer, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._optimizer, name, value)
+
+    def state_dict(self):
+        return self._opal.state_dict()
+
+    def load_state_dict(self, state):
+        if state.get("opal") == 1:
+            return self._opal.load_state_dict(state)
+        if "state" in state and "param_groups" in state:
+            key = "accelerate-legacy-state"
+            if key not in self._opal._warned:
+                self._opal._warned.add(key)
+                print(
+                    "[opal] WARNING: the legacy Accelerate checkpoint contains only the original optimizer state; "
+                    "it holds no OPAL program or progress. Load a separately saved OPAL state_dict to restore them.",
+                    file=sys.stderr, flush=True,
+                )
+            with programs.keep_param_group_identity():
+                return self._optimizer.load_state_dict(state)
+        return self._opal.load_state_dict(state)
+
+
 # ----- public entry points ------------------------------------------------------------------------------------
 
 
@@ -560,10 +594,10 @@ class AgentOptimizer(
                 **(dict(eval_integrity=dict(threshold=self._integrity_threshold)) if self._integrity else {}),
             )
         atexit.register(_close_at_exit, weakref.ref(self))
-        # Accelerator retains these prepared objects for save_state/load_state. Keep their delegation attached
-        # to OPAL, while the starting updater and the user's torch schedulers still hold the raw optimizers.
+        # Accelerator retains these objects. Public state/param_groups/defaults still delegate to the raw
+        # optimizer (including after load_state_dict replaces state); only checkpoint I/O goes through OPAL.
         for prepared in accelerated:
-            prepared.optimizer = self
+            prepared.optimizer = _AccelerateCheckpointAdapter(prepared.optimizer, self)
 
     def _check_defaults(self, prompt, program):
         """OPAL's defaults are fixed (opal/defaults.py): say loudly when the files this run is about to use differ from
@@ -696,16 +730,16 @@ class AgentOptimizer(
                 mod = programs.load(files, "updater.py", tag, d)
                 with programs.keep_param_group_identity(), self._dtypes_kept():
                     up = mod.build(self.named, previous=previous, spec=self._spec())
-                    methods = ("step",) if files == self._agent_exempt() else ("step", "state_dict", "load_state_dict")
+                    starting = programs.side_digests(files)[0] == self._starting_digest
+                    methods = ("step",) if starting else ("step", "state_dict", "load_state_dict")
                     for method in methods:
                         if not callable(getattr(up, method, None)):
                             raise TypeError(f"build() must return an updater with a callable {method} method")
-                    bad = programs.unpicklable(up.state_dict()) if files != self._agent_exempt() else []
+                    bad = programs.unpicklable(up.state_dict()) if not starting else []
                 if bad:
                     raise TypeError(
-                        "state_dict() must contain only tensors, primitive values, lists, tuples and dicts "
-                        "(including Counter/OrderedDict), "
-                        "without cycles, so that checkpoints load with weights_only=True; found: "
+                        "state_dict() must contain tensors and weights-only-safe values in acyclic containers, "
+                        "so that checkpoints load with weights_only=True; found: "
                         + "; ".join(bad)
                     )
                 groups = self._groups_of(up)
@@ -891,8 +925,8 @@ class AgentOptimizer(
         if self._closed:
             self.run.event(
                 "cost_settled", k=k,
-                cost_usd=None if self.worker.usage is not None or self.worker.backend.name == "codex"
-                else round(self.worker.cost, 4),
+                cost_usd=self.worker.recorded_cost,
+                unknown_cost_decisions=sorted(self.worker.unknown_cost_decisions),
             )
         self._live.refresh()
 
@@ -1605,8 +1639,8 @@ class AgentOptimizer(
             update=self.update,
             version=self.version,
             decisions=self.worker.k if self.worker else 0,
-            cost_usd=(None if settling or self.worker and (self.worker.usage is not None or be.name == "codex")
-                      else round(self.worker.cost, 4) if self.worker else 0),
+            cost_usd=self.worker.recorded_cost if self.worker else 0,
+            unknown_cost_decisions=sorted(self.worker.unknown_cost_decisions) if self.worker else [],
             **(dict(pending_decision=self.worker.k) if settling else {}),
             **(dict(usage=self.worker.usage) if self.worker and self.worker.usage is not None else {}),
             **(dict(eval_integrity=checked) if checked else {}),
