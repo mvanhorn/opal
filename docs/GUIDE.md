@@ -105,6 +105,37 @@ def fake_agent(workspace, message, system):
 opt = opal.wrap(opt, model, total_steps=steps, goal="...", backend=fake_agent)
 ```
 
+**Check it byte for byte.** Run the plain and the `keep` script in separate processes with the same seed, data order
+and software versions, add this after training in both, and compare the printed hashes (hash the tensors, not a
+checkpoint file, whose container metadata can differ); compare the per-update training losses too.
+
+```python
+import hashlib, json
+
+digest = hashlib.sha256()
+for name, p in sorted(model.named_parameters()):
+    a = p.detach().cpu().contiguous().numpy()
+    header = json.dumps([name, str(a.dtype), list(a.shape)], separators=(",", ":")).encode()
+    digest.update(len(header).to_bytes(8, "little") + header + a.tobytes(order="C"))
+print("parameter sha256:", digest.hexdigest())
+```
+
+**The Hugging Face Trainer, on CPU.** Install the `hf` extra and replace your `Trainer` with `OpalTrainer`; for a CPU
+smoke test set `use_cpu=True` in your `TrainingArguments` and keep everything else. Keep the Trainer's own
+`max_grad_norm`: moving clipping into OPAL can change the rounding, and the run is then no longer byte-identical.
+
+```bash
+pip install "opal-optimizer[hf] @ git+https://github.com/xingjian-bai/opal"
+```
+
+```python
+from opal.hf import OpalTrainer
+
+trainer = OpalTrainer(model=model, args=training_args, train_dataset=train, eval_dataset=dev,
+                      opal=dict(backend="keep", summarize=False, goal="My classifier; judged by held-out accuracy"))
+trainer.train()
+```
+
 ## Experimental Codex backend
 
 Claude remains the default. Select `backend="codex", backend_options=dict(model="gpt-6.1-sol", effort="high")` (`xhigh` also supported), or `opal broker <box> --backend codex --model gpt-6.1-sol --effort high`.

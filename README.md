@@ -88,9 +88,10 @@ Each runs plain by default; `--opal` wraps the optimizer and `--backend keep` is
 
 ## Prerequisites
 
-- **A PyTorch training script** that uses `torch.optim` optimizers, on one GPU or on several GPUs of one node (DDP).
+- **A PyTorch training script** that uses `torch.optim` optimizers, on CPU, one GPU or several GPUs of one node (DDP).
   Python ≥ 3.9, PyTorch ≥ 2.3.
-- **Claude Code, logged in, on the machine that runs your training's rank 0.** OPAL's agent is a Claude Code
+- **For an agent run: Claude Code, logged in, on the machine that runs your training's rank 0.** `backend="keep"`
+  (no agent) needs neither and makes no model calls. OPAL's agent is a Claude Code
   session: install [Claude Code](https://docs.claude.com/en/docs/claude-code), run `claude` once and log in with a
   Claude subscription or an API key. The agent's usage is billed to that account. `max_cost_usd` caps it: it is off
   by default, a run can overshoot it by one call, and the summaries of code changes for the report (claude-opus-5-5
@@ -111,8 +112,9 @@ model trains. OPAL is cloned at <PATH TO OPAL>. Please set it up for this projec
 1. Read <PATH TO OPAL>/README.md and <PATH TO OPAL>/skills/train-with-agent/SKILL.md, and follow the skill. Do not
    edit any file inside <PATH TO OPAL>; configure everything through opal.wrap arguments.
 2. Install OPAL into the Python environment this project trains with (pip install -e <PATH TO OPAL>), and
-   run `opal doctor --live` to check that torch and Claude Code are ready on the machine that will run training.
-   If Claude Code is missing or not logged in there, tell me what to run; do not log in for me.
+   run `opal doctor` (free, offline) to check that torch and Claude Code are ready on the machine that will run
+   training; run `opal doctor --live` (one tiny paid agent call) only once I approve an agent run. If Claude Code is
+   missing or not logged in there, tell me what to run; do not log in for me.
 3. Find my training script and loop. Tell me what you found (optimizer, scheduler, number of steps, single GPU or
    DDP, gradient clipping, mixed precision, checkpoints) and anything OPAL does not support.
 4. Ask me for the goal sentence: what the run trains and what it is judged by at the end. Do not invent the metric.
@@ -166,6 +168,9 @@ python train.py                                  # max_cost_usd=20 instead: the 
 opal show   opal_runs/<folder>                   # one line per decision
 opal report opal_runs/<folder>                   # one HTML page: loss, learning rates, rationales, code diffs
 ```
+
+To check the keep run against your plain run byte for byte, and for the Hugging Face Trainer, see
+[Try it without an agent](docs/GUIDE.md#try-it-without-an-agent).
 
 ## How it works
 
