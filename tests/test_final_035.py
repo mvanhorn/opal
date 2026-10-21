@@ -261,3 +261,21 @@ def test_state_guard_does_not_call_overridden_container_methods(kind):
     value.items = Custom().__getstate__
     assert programs.unpicklable(value)
     assert calls == []
+
+
+def test_closed_allowlist_uses_type_identity_without_custom_metaclass_code():
+    calls = []
+    class Meta(type):
+        def __eq__(cls, other):
+            calls.append('equality')
+            return True
+        def __getattribute__(cls, name):
+            if name in ('__module__', '__qualname__'):
+                calls.append('type metadata')
+            return super().__getattribute__(name)
+    class Custom(metaclass=Meta):
+        def __reduce__(self):
+            calls.append('reducer')
+            return torch.Size, ([2, 3],)
+    assert programs.unpicklable(Custom())
+    assert calls == []

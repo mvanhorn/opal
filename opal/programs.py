@@ -167,30 +167,33 @@ def unpicklable(obj) -> list:
         kind = type(value)
         if depth > 100:
             raise TypeError("state nesting exceeds 100 levels")
-        if kind in (set, frozenset, torch.memory_format):
+        if any(kind is allowed for allowed in (set, frozenset, torch.memory_format)):
             # Probe only library-owned values, never a live object's reducer. Loader support differs
             # across torch versions; accepting an unsupported builtin would still break safe resume.
             stream = io.BytesIO()
-            torch.save(kind() if kind in (set, frozenset) else value, stream)
+            torch.save(kind() if kind is set or kind is frozenset else value, stream)
             stream.seek(0)
             torch.load(stream, weights_only=True)
-        if kind in (type(None), bool, int, float, complex, str, bytes,
-                    torch.Size, torch.dtype, torch.device, torch.layout, torch.memory_format):
+        if any(kind is allowed for allowed in (
+            type(None), bool, int, float, complex, str, bytes,
+            torch.Size, torch.dtype, torch.device, torch.layout, torch.memory_format,
+        )):
             return
-        if kind not in (torch.Tensor, torch.nn.Parameter, dict, Counter, OrderedDict,
-                        list, tuple, set, frozenset):
-            raise TypeError(f"non-plain state type {kind.__module__}.{kind.__qualname__}")
+        if not any(kind is allowed for allowed in (
+            torch.Tensor, torch.nn.Parameter, dict, Counter, OrderedDict, list, tuple, set, frozenset,
+        )):
+            raise TypeError("non-plain state type outside the closed allowlist")
         if id(value) in active:
             raise TypeError("cyclic state container")
         active.add(id(value))
         try:
-            if kind in (torch.Tensor, torch.nn.Parameter):
+            if kind is torch.Tensor or kind is torch.nn.Parameter:
                 plain(vars(value), depth + 1)  # Python attributes are serialized too
-            elif kind in (dict, Counter, OrderedDict):
+            elif kind is dict or kind is Counter or kind is OrderedDict:
                 for key, item in dict.items(value):
                     plain(key, depth + 1)
                     plain(item, depth + 1)
-                if kind in (Counter, OrderedDict):
+                if kind is Counter or kind is OrderedDict:
                     plain(vars(value), depth + 1)
             else:
                 for item in value:
