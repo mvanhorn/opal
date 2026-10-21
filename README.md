@@ -7,7 +7,7 @@
   <a href="https://xingjianbai.com/reactive-optimizers/">Blog post</a> ·
   <a href="docs/GUIDE.md">Guide</a> ·
   <a href="#start-with-your-coding-agent">Start with your agent</a> ·
-  <a href="#examples">Examples</a>
+  <a href="examples/README.md">Examples</a>
 </p>
 
 Most networks are trained with an optimizer that is fixed before training starts. OPAL (OPtimizer with an Agent in
@@ -20,73 +20,6 @@ The agent can change anything that can be written as optimizer code: the update 
 learning rates and their schedules, momentum and β₂, preconditioning, clipping, guards against loss spikes. It cannot
 touch your model, data, loss, batch size, number of steps or evaluation. Until the agent changes something, the
 wrapped run is bit-for-bit the same as the plain one.
-
-## Examples
-
-### Reproduce our results
-
-We ran each setting once, and each agent started from the task's own recipe. Each folder has the official repository
-and commit, the lines that wrap the optimizer, the commands for both runs, the hardware, time and cost, and where each
-number comes from. The "Reactive optimizer" column comes from the harness this package grew out of (for
-modded-nanogpt, from OPAL 0.1.0). The last column is a rerun on OPAL 0.3 with the neutral prompt and Opus 5.5 at
-effort high. In all of these runs, training paused at each decision while the agent answered, which is OPAL's default.
-
-| Example | Measure | Official recipe | Reactive optimizer | Made with | On OPAL 0.3 |
-|---|---|---|---|---|---|
-| [SiT-B/2](examples/sit_b2/), ImageNet 256, 400K updates, 8× H100 | FID-50K ↓ | 35.7 with our evaluator (the SiT paper reports 33.0 with the ADM evaluator; Muon: 30.3) | 23.6 | earlier harness | not rerun |
-| [RAEv2-B](examples/raev2_b/), ImageNet 256, 20 epochs, 8× H100 | FID-50K ↓ | 3.39 | 3.10 when asked for efficiency; 3.46 with the neutral prompt | earlier harness | 3.19 |
-| [Goldfish 125M GPT](examples/goldfish_swahili/), 1 GB of Swahili, 1× H100 | FLORES-200 bits ↓ | 79.37 | 77.60 | earlier harness | 77.25 |
-| [modded-nanogpt record #36](examples/modded_nanogpt/), 162M GPT, 8× H100 | validation loss ↓ | 3.2781 | 3.2749 (a small gain: the track assumes σ = 0.0013 per run) | OPAL 0.1.0 | not rerun |
-
-It does not always help. On modded-nanogpt, a heavily tuned benchmark, a run on OPAL 0.2.0 with the neutral prompt
-ended at 3.2878, worse than record #36. Your numbers may also differ from ours, because the agent can make different
-choices from one run to the next and hosted models change between versions. Still, most of our reruns on OPAL 0.3
-ended ahead of the recipe they started from. The [blog post](https://xingjianbai.com/reactive-optimizers/) has more.
-
-### Small examples (CPU)
-
-`examples/mnist_mlp.py` trains an MLP on MNIST with AdamW and a cosine schedule for 5 epochs. It doubles as the
-install check. From a clone, after `pip install -e ".[examples]"`:
-
-```bash
-python examples/mnist_mlp.py                            # plain PyTorch: final test accuracy 0.9850
-python examples/mnist_mlp.py --opal --backend keep      # wrapped, no agent, free: the same run, bit for bit
-python examples/mnist_mlp.py --opal                     # Claude Code rewrites the optimizer (capped at $5)
-```
-
-On an M1 Max CPU the first two take about 15 s each and print the same `parameter checksum` (the first 12 hex digits
-of the sha256 of the final parameters). Our agent run ended at 0.9863. It took 862 s, 532 s of which was waiting for
-the agent; the agent was asked 42 times, changed the program 6 times and cost $2.70.
-
-The whole test suite runs on CPU with no agent and no cost: `pip install -e ".[examples,test,hf]"`, then `pytest -q`. It
-takes a few minutes on a laptop. Three tests are skipped unless you set `OPAL_REAL_CLI=1`; they start the real Claude
-Code CLI against a local mock.
-
-### More scripts (one GPU)
-
-| Script | Task | Plain → `--opal` (1× H100) | Time: plain → `--opal` |
-|---|---|---|---|
-| `examples/cifar10_resnet.py` | ResNet-18 on CIFAR-10, SGD-Nesterov + one-cycle | test accuracy 0.9449 → 0.9456 | 66 s → 27 min |
-| `examples/diffusion_mnist.py` | small UNet flow-matching diffusion on MNIST, EMA | EMA validation loss 0.1696 → 0.1623 | 71 s → 29 min |
-| `examples/gpt_small.py` | 34M GPT on FineWeb tokens, AdamW + warmup-cosine | validation loss 4.4763 → 4.3419 | 186 s → 31 min |
-| `examples/overfit/train.py` | ResNet-18 on CIFAR-10 with AdamW, built to overfit (10% wrong labels); the agent also sees a development set | test accuracy 73.53% → 80.42% | → 39 min |
-
-Each script runs plain by default. `--opal` wraps the optimizer and `--backend keep` makes it a free dry run. The
-overfit row used `--setting label10 --lr 3e-3 --epochs 120`, plus `--opal --validation --decisions 30
---max-cost-usd 40 --test-at-end` for the agent run. These runs are short, so most of the `--opal` time is training
-waiting for the agent. Keep the default `blocking=True` for short runs.
-
-## Prerequisites
-
-- **A PyTorch training script** that uses `torch.optim` optimizers, on CPU, one GPU or several GPUs of one node (DDP).
-  Python 3.9 or newer, PyTorch 2.3 or newer.
-- **For an agent run, Claude Code, logged in on the machine that runs rank 0.** Install
-  [Claude Code](https://docs.claude.com/en/docs/claude-code), run `claude` once and log in with a Claude subscription
-  or an API key. The agent's usage is billed to that account. `max_cost_usd` caps it; there is no cap by default.
-  The short summaries of code changes in the report are not counted (`summarize=False` turns them off). A dry run
-  with `backend="keep"` needs neither and makes no model calls.
-- **No internet or no login on the GPU machine?** Run the agent on your laptop or a login node and connect it to the
-  training job through a shared folder (see [the mailbox broker](docs/GUIDE.md#gpu-machines-without-an-agent)).
 
 ## Start with your coding agent
 
@@ -160,6 +93,34 @@ opal report opal_runs/<folder>                   # one HTML page: loss, learning
 The guide shows how to check the keep run against your plain run byte for byte, and how to use the Hugging Face
 Trainer: [Try it without an agent](docs/GUIDE.md#try-it-without-an-agent).
 
+## Prerequisites
+
+- **A PyTorch training script** that uses `torch.optim` optimizers, on CPU, one GPU or several GPUs of one node (DDP).
+  Python 3.9 or newer, PyTorch 2.3 or newer.
+- **For an agent run, Claude Code, logged in on the machine that runs rank 0.** Install
+  [Claude Code](https://docs.claude.com/en/docs/claude-code), run `claude` once and log in with a Claude subscription
+  or an API key. The agent's usage is billed to that account. `max_cost_usd` caps it; there is no cap by default.
+  The short summaries of code changes in the report are not counted (`summarize=False` turns them off). A dry run
+  with `backend="keep"` needs neither and makes no model calls.
+- **No internet or no login on the GPU machine?** Run the agent on your laptop or a login node and connect it to the
+  training job through a shared folder (see [the mailbox broker](docs/GUIDE.md#gpu-machines-without-an-agent)).
+
+## Results
+
+One run per setting, each agent starting from the task's own recipe:
+
+| Example | Measure | Official recipe | Reactive optimizer |
+|---|---|---|---|
+| SiT-B/2, ImageNet 256, 400K updates | FID-50K ↓ | 35.7 (our evaluator) | 23.6 |
+| RAEv2-B, ImageNet 256, 20 epochs | FID-50K ↓ | 3.39 | 3.10 (prompt asked for efficiency), 3.46 (neutral prompt); rerun on OPAL 0.3: 3.19 |
+| Goldfish 125M GPT, Swahili | FLORES-200 bits ↓ | 79.37 | 77.60; rerun on OPAL 0.3: 77.25 |
+| modded-nanogpt record #36 | validation loss ↓ | 3.2781 | 3.2749 |
+
+It does not always help: a run of modded-nanogpt on OPAL 0.2.0 ended at 3.2878, worse than record #36. Your
+numbers may also differ from ours, because the agent can choose differently from one run to the next. The
+[examples page](examples/README.md) has every number with its version, hardware, time and cost, the small CPU and
+one-GPU scripts, and how to rerun each setting.
+
 ## How it works
 
 ```
@@ -208,8 +169,13 @@ Claude is the default. To use Codex, pass `backend="codex", backend_options=dict
 with `CODEX_HOME=~/.codex-opal codex login --device-auth`, and do not copy or link the `auth.json` of your default
 Codex home. `max_cost_usd` does not cap Codex; `backend_options=dict(max_tokens=N)` is a soft token cap that a turn
 in progress can exceed. The run stops with an error if Codex compacts the conversation (around 450k tokens of context
-with Codex CLI 0.160.1). Our single runs on one H100, Codex against plain: `gpt_small` validation loss 4.3125 vs
-4.4763, `diffusion_mnist` EMA validation loss 0.1687 vs 0.1696.
+with Codex CLI 0.160.1).
+
+## Tests
+
+The whole test suite runs on CPU with no agent and no cost: `pip install -e ".[examples,test,hf]"`, then `pytest -q`. It
+takes a few minutes on a laptop. Three tests are skipped unless you set `OPAL_REAL_CLI=1`; they start the real Claude
+Code CLI against a local mock.
 
 ## Status and limitations
 
