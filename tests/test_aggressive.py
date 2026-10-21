@@ -1,4 +1,4 @@
-"""OPAL 0.1.2-aggressive (prompt="aggressive"): the neutral prompt; the decision message's last sentences; the example updater's learning-rate controller, off by default."""
+"""OPAL 0.1.2-aggressive (prompt="aggressive"): the neutral prompt with the edits listed in opal/misc/aggressive.py; the decision message's last sentences; the example updater's learning-rate controller, off by default."""
 
 import ast
 import sys

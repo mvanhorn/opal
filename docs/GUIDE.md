@@ -498,7 +498,11 @@ than every N updates. Draw each time at random, as `examples/overfit/records.py`
 each epoch). It needs a prompt that states it (the neutral prompt, or a template with a `{validation_note}` field);
 with a template that has no `{validation_note}` field, `wrap` raises. `examples/overfit/train.py` uses it.
 
-**Evaluation integrity (0.2.2).** `eval_integrity` (on by default with `validation=N`; `True` or `False` to choose) checks
+**Evaluation integrity (0.2.2).** Two of our overfit runs read the evaluation times (from the prompt, which then stated
+them, and from the training script) and timed changes of the parameters to them: one scaled the classifier for each
+evaluation and restored it at the next update, the other copied a running average into the model 49 updates before
+each evaluation and put the iterate back after it; both planned a final classifier scale chosen on these probes.
+Besides not announcing the times, `eval_integrity` (on by default with `validation=N`; `True` or `False` to choose) checks
 every evaluation you report: rank 0 copies a fixed sample of each parameter tensor's entries after every update (at
 most 32K entries in all, one `torch.cat` into a ring of 138 updates on the device, no host synchronisation: about
 0.04 ms per update on a CPU and 0.16 ms on Apple MPS for a ResNet-18), and 8 updates after each `report_dev` reads that

@@ -54,7 +54,10 @@ Evaluation times (0.2.2): the development set is evaluated after one update draw
 (--evals-per-epoch K: one in each K-th part of the epoch), and after the last update; records.eval_updates draws them
 from --eval-seed, and the config line lists them (eval_updates). The test set is evaluated at the same updates, for us
 only. The draw lives in records.py so that train.py, which the agent reads, shows no cadence; the agent is told "about
-every N updates, at times that are not announced" (N = updates per epoch / K).
+every N updates, at times that are not announced" (N = updates per epoch / K). Until 0.2.1 the script evaluated every
+--dev-every updates (default one epoch) and the prompt said "Every N updates": two agent runs on small20 timed
+changes of the parameters to the evaluations (a classifier scale probe; a weight average swapped in for each
+evaluation), which wrap(validation=N) now checks for (eval_integrity).
 
 With --test-at-end, prepare the CIFAR-10 cache separately using --prepare-data. During training, only x_train and
 y_train are read from the NPZ cache; no test arrays are loaded or scored. After the last update and opt.close(), the
