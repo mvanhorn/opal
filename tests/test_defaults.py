@@ -1,7 +1,6 @@
 """OPAL's defaults are fixed (opal/defaults.py): defaults.json holds the hashes of the default prompt, the starting
 programs and the code that writes them; a run warns when they were edited, and says when it uses a custom prompt or
-program. (2026-10-20: a student's coding agent edited the default analysis.py and updater.py inside an editable
-install, and his runs did not reproduce ours, with nothing to tell him.)"""
+program."""
 
 import json
 

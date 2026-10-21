@@ -1,5 +1,4 @@
-"""OPAL 0.1.2-aggressive (prompt="aggressive"): the neutral prompt with the authors' edits of 2026-10-18 and nothing
-else; the decision message's last sentences; the example updater's learning-rate controller, off by default."""
+"""OPAL 0.1.2-aggressive (prompt="aggressive"): the neutral prompt; the decision message's last sentences; the example updater's learning-rate controller, off by default."""
 
 import ast
 import sys

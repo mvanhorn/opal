@@ -1,9 +1,7 @@
-"""Regressions from the review of 2026-10-18, what the agent is told: a decision asked under the non-finite pause says
-training waits (M2, prompts#10) and keeps its reason (B9); the wall time per update leaves out the pauses (M3, F7);
-the decision budget (prompts#7, F17); the starting program is timed (prompts#9, F10); report counts past 400
-(prompts#16, F12); the non-finite pause sentence (prompts#11); clipping in the starting summary (prompts#4); no lambda
-source without share_code (prompts#13); no claim of a copied script (prompts#14); no shell without the sandbox
-(prompts#15); a failed agent call is said and counted as failed (B4); the budget a backend may cap a call with (D1)."""
+"""What the agent is told: a decision asked under the non-finite pause says
+training waits and keeps its reason; the wall time per update leaves out the pauses;
+the decision budget; the starting program is timed; report counts past 400; the non-finite pause sentence; clipping in the starting summary; no lambda
+source without share_code; no claim of a copied script; no shell without the sandbox; a failed agent call is said and counted as failed; the budget a backend may cap a call with."""
 
 import re
 from pathlib import Path

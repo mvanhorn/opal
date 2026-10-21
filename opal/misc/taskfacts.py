@@ -277,11 +277,8 @@ EVALUATION_ON = (
 
 
 def validation_note(every=None, size=None) -> str:
-    """The TASK sentences (appended to the run's facts) when the training script reports a development set. Since
-    0.2.1 "The performance in the goal" (it said "The final performance"; the authors' edit of 2026-10-18, as in the first
-    sentence of neutral.md in 0.2.0). Since 0.2.2 the times are not stated (it said "Every N updates, the training
-    script evaluates ..."; the authors' ruling of 2026-10-18 after two runs timed changes to the parameters to the
-    evaluations): about every N updates, at times that are not announced."""
+    """The TASK sentences (appended to the run's facts) when the training script reports a development set:
+    about every N updates, at times that are not announced."""
     if not every:
         return ""
     of = f" of {_v(size)}" if size is not None else ""

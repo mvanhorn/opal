@@ -14,4 +14,3 @@ First public release.
 - Examples on CPU and one GPU, and the reproductions in the README (SiT-B/2, RAEv2-B, Goldfish, modded-nanogpt).
 - `opal report`, `opal show`, `opal estimate`, `opal doctor`; the Hugging Face Trainer through `opal.hf.OpalTrainer`.
 - An experimental Codex backend (`backend="codex"`).
-- [What we checked](docs/checks.md) and [run times and agent costs](docs/times.md).

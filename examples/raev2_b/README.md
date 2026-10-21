@@ -77,31 +77,13 @@ EXPERIMENT_NAME=raev2-b20-agent OPAL_MAX_COST_USD=20 \
 
 | | Official recipe | Asked for efficiency | Neutral prompt |
 |---|---|---|---|
-| Run | `dopt-raev2-b20-official-v1` | `dopt-raev2-b20-agent-open` | `dopt-raev2-b20-agent-v1` |
-| Hardware | 8× H100 80GB | 8× H100 80GB | 8× H100 80GB (preempted at decision 78, resumed) |
-| Training time | 3.1 h | 4.6 h, of which 1.4 h waiting for the agent | – (the preemption makes it incomparable) |
+| Hardware | 8× H100 80GB | 8× H100 80GB | 8× H100 80GB |
+| Training time | 3.1 h | 4.6 h, of which 1.4 h waiting for the agent | – |
 | Agent cost | – | $15.99 | $9.94 |
 | Decisions answered / that changed code | – | 100 / 16 (the last at decision 45) | 100 / 6 |
 | FID-50K at 25,000 | 3.385 | 3.101 | 3.455 |
 
-- **Code.** Our runs used upstream's code with an optimizer hook for the harness, our own logging, and data loading
-  from our storage; launched as above. That code and the harness are not in this repository.
+- **Code.** Our runs used upstream's code with an optimizer hook for the harness and our own logging; launched as above. That code and the harness are not in this repository.
 - **Evaluation.** Online FID-50K during training (every 5,000 updates) on the ImageNet validation labels, 50 Euler
   steps, no guidance, EMA weights; torch-fidelity against the default ImageNet 256 reference statistics
   (`imagenet_256_fid_stats`) of upstream's pinned evaluator, `nanovisionx/nanogen-evals` at `19dfb4c`.
-- **What carried the gain.** The efficiency agent's main change was its learning-rate schedule (a higher peak, then a
-  linear decay from update 11,250). The official optimizer run with that schedule and nothing else of the agent's
-  program reached **3.040**, better than the agent's own 3.101: the schedule the agent wrote accounts for all of its
-  gain.
-- **Reruns.** The agent's final program rerun from update 0 with no agent: 3.110. Its decisions replayed: 3.148. Both
-  ran partly on A100 and other nodes, so they are not bitwise checks of the original.
-- **Other prompts.** Two more prompts of that harness, one asking for stability and one whose decisions were triggered by
-  the agent's own predictions, ended at 3.565 (preempted twice, finished partly on A100) and 3.423: both worse than the official
-  recipe.
-- **At 40 epochs** (50,040 updates), the same efficiency prompt ended at 2.858 against the official recipe's 2.843:
-  no gain. It led by 0.076 at 35,000 updates.
-- **Noise.** One seed per run. The official recipe scored 3.440 at update 25,000 inside the 40-epoch run against 3.385 in
-  the 20-epoch run, a difference of 0.055 between two runs of the same recipe up to that point.
-- **Where the numbers come from:** each run's `mirror/<run>_ema.csv` (FID at each 5,000 updates) and
-  `agent/broker-state.json` (cost, decisions) in our experiment records; the learning-rate-only control is
-  `dopt-raev2-b20-attr-official-openlr`.

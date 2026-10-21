@@ -1,8 +1,7 @@
 """0.2.2 evaluation integrity (opal/misc/integrity.py): a program that moves the parameters to another point for a
 development evaluation and moves them back after it flags the run; ordinary optimizers do not. The two positive
-cases reproduce what two overfit runs did (A2: ss-o2, the classifier scaled by a probe factor around each evaluation;
-A1: ss-o1, a running average swapped in 49 updates before each evaluation and the iterate restored after it); their
-programs knew the evaluation times, which the tests give them."""
+cases check the classifier scaled by a probe factor around each evaluation and a running average swapped in 49
+updates before each evaluation and the iterate restored after it; the tests give them the evaluation times."""
 
 import json
 import random
@@ -20,7 +19,7 @@ LR, MOMENTUM, WD = 0.05, 0.9, 5e-4
 
 
 def sgd(named, grads, bufs, lr):
-    """Nesterov SGD with coupled L2 weight decay, as the runs' programs (foreach-free here)."""
+    """Nesterov SGD with coupled L2 weight decay, foreach-free here."""
     for n, p in named:
         g = grads.get(n)
         if g is None:
@@ -31,7 +30,7 @@ def sgd(named, grads, bufs, lr):
         p.add_(d + MOMENTUM * b, alpha=-lr)
 '''
 
-# A2 (ss-o2, programs/v020: probes.py and updater.py): after the step of an evaluated update, fc.weight and fc.bias
+# A2: after the step of an evaluated update, fc.weight and fc.bias
 # are multiplied by a probe factor; at the next update the saved tensors are restored and that update is skipped
 A2 = SGD_HEAD + '''
 PROBE_EVALS = __EVALS__
@@ -71,10 +70,10 @@ def build(named_params, previous=None, spec=None):
     return Updater(named_params, previous, spec)
 '''
 
-# A1 (ss-o1, programs/v023/updater.py): a uniform running average of the iterates; for an evaluation after update E,
+# A1: a uniform running average of the iterates; for an evaluation after update E,
 # after the step of update E - 49 the iterate and momentum are saved and the average is copied in, updates E - 48 ..
 # E + 1 run at learning rate 0, and after the step of E + 1 the iterate and momentum come back. SCAN: the frozen-model
-# variant of the end of that run, where every evaluation of the frozen model is a probe of a classifier scale.
+# variant where every evaluation of the frozen model is a probe of a classifier scale.
 A1 = SGD_HEAD + '''
 PROBE_EVALS = __EVALS__
 PROBE_LEN = 49

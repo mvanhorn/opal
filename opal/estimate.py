@@ -6,16 +6,12 @@ measured from its own time per update. Both use the per-decision times and costs
 When `decisions` is not set, a blocking run schedules at most as many decisions as keep the expected waiting within
 MAX_WAIT_FACTOR (4) times the run's own training time, at least one; a `decisions` the user sets is never changed, and a line says when its waiting is above that.
 
-Per decision of claude-opus-5-5 at effort high, the agent's `seconds` and `cost_usd` of every answered decision in our
-runs of 2026-10-20 (read 21:10 EDT): every answered decision of our runs with `--model claude-opus-5-5 --effort high`
-on 0.3 pre-releases (Track 3, CIFAR-10, overfit, Goldfish, LightningDiT-XL and RAEv2-B, read from
-each run's decisions/*/response.json) and of a local MNIST run (events.jsonl), 567 decisions in all:
+Per decision of claude-opus-5-5 at effort high, the agent's `seconds` and `cost_usd`, 567 decisions in all:
   the first decision, which reads the training code and writes the first program: 101 to 432 s over 20 runs (median
   251 s), $0.33 to $1.62 (median $1.08);
   each later decision, averaged over a run: 10 to 51 s over the 15 runs with at least 10 of them (median 27 s), $0.058
   to $0.377 (median $0.23).
-Through a mailbox, add the broker's poll and the ssh transfer, a few seconds per decision (op-cifar: about 25 s between
-answers for about 15 s of agent time). Other models and efforts were not measured.
+Through a mailbox, add the broker's poll and the ssh transfer, a few seconds per decision. Other models and efforts were not measured.
 """
 
 from __future__ import annotations

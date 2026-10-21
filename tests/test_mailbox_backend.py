@@ -1,7 +1,6 @@
-"""The mailbox backend and its broker on a local folder (CPU only, no model call): the review findings of 2026-10-18
-B7 (a --keep-serving broker for several runs), B8 (a new broker gets the whole workspace; notes come back), B12 (the
-agent's time limit), B14 (the broker survives a failing request), B15 (one broker per request) and D3 (a crashed run
-does not hold the broker)."""
+"""The mailbox backend and its broker on a local folder (CPU only, no model call): a --keep-serving broker for several runs, a new broker gets the whole workspace; notes come back, the
+agent's time limit, the broker survives a failing request, one broker per request and a crashed run
+does not hold the broker."""
 
 from __future__ import annotations
 
@@ -434,7 +433,7 @@ def test_an_answer_whose_write_fails_is_written_again_not_asked_again(tmp_path, 
     assert t.is_alive() and t.error is None
 
 
-# ----- 9b (2026-10-20): a broker that is gone for a while is waited for, and the same request is answered --------------
+# ----- a broker that is gone for a while is waited for, and the same request is answered --------------
 
 
 def _fake_broker(box, stop, answers, gone_at=None, gone_for=0.0):

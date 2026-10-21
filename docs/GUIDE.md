@@ -189,9 +189,6 @@ within 4x its own training time (at least one, in the same schedule; the line sa
 run gets one decision this way, a five-hour run its 50. A run resumed from a checkpoint keeps what its first check
 chose.
 
-From our runs: SiT-B/2, 94 decisions with Claude Opus, $11.28; a run whose agent woke on its own forecast, 16
-decisions, $3.23.
-
 **When the agent is unavailable.** A decision whose agent cannot work at all is kept and waited for, not failed:
 Claude Code not logged in (or its key invalid), a usage, spend or rate limit, the API overloaded or the network
 down, the CLI missing, and with a mailbox no broker answering for `broker_wait` seconds (120) or a broker whose own
@@ -213,10 +210,7 @@ waits. A failure of the agent's own turn (a crash, a time limit, a budget it spe
 and the edit takes effect from the update at which the decision was asked; the agent's thinking time adds to the wall
 time. `blocking=False` and `blocking="auto"` are there to go faster. Without waiting, an answer takes effect (answer
 time / time per update) updates after the state the agent saw, and no new decision is asked while one is in flight, so
-with fast steps the agent may be asked far fewer times. In one finished non-blocking run, one seed, of a
-162M-parameter GPT over 3,250 updates (OPAL 0.1.0), 17 of the 100 scheduled decisions were asked and 2 applied;
-answers took effect a median of 140 updates after their request (120 to 890), and the final result, 3.2781, was level
-with the baseline's. `blocking="auto"` waits at a decision only when the answer would land more than `max_lag_updates`
+with fast steps the agent may be asked far fewer times. `blocking="auto"` waits at a decision only when the answer would land more than `max_lag_updates`
 updates late (default 50): the median of the agent's last 5 answer times divided by the time per update (the median
 over the last 5 check intervals, pauses left out); it always waits at the first decision. Each decision's choice, its
 reason and the lag it had are in `events.jsonl` and the report.
@@ -303,8 +297,7 @@ explicitly (they default to `decisions=50`, `schedule="front"`, blocking, claude
 - **Checkpoints and resume:** save `opt.state_dict()` (programs, their state, the agent's session, and your optimizers'
   and schedulers' own state whatever the program's `state_dict()` holds) and your scheduler's `state_dict()`. The
   checkpoint grows by OPAL's state: the agent's programs' state, and the analysis memory, which for the starting
-  analysis holds a copy of one tensor per parameter role (for GPT-2 that includes the whole token embedding; a small
-  Goldfish model's optimizer file grew from 27 MB to 47 MB). To resume, rebuild the optimizer and scheduler, `wrap(...)` with the same arguments,
+  analysis holds a copy of one tensor per parameter role (for GPT-2 that includes the whole token embedding). To resume, rebuild the optimizer and scheduler, `wrap(...)` with the same arguments,
   then `load_state_dict`. With the default run folder the run continues in the checkpoint's folder and conversation
   when that folder is the same run, interrupted (in this run's `opal_runs/`, and its run did not finish); records the
   interrupted attempt wrote after the checkpoint move to `attempts/`, and the agent is told that its later decisions
@@ -358,14 +351,6 @@ device after every update (tens of microseconds for a few hundred tensors) and a
 no hooks in your model; no recompilation of a `torch.compile`d model when the program
 changes (tested); nothing at all when the agent keeps the programs. Each decision shows the agent its program's time
 per update next to the starting program's.
-
-The agent's own update rule usually costs more than the wrapper. We timed the final programs of 16 runs of the earlier
-harness on one A100, each against a standard implementation of the same algorithm on the same parameters
-(`torch.optim.Muon`, or the official GMuon): 9 were within 4 ms per update of it; 6 added 7 to 26 ms through
-Newton–Schulz in float32 instead of bfloat16 (10 to 15 ms of it on a 125M model), Python loops over matrices or
-parameters, statistics recomputed for every tensor at every update, and host reads inside the update; one ran a larger
-Muon. The prompt's EFFICIENCY rules cover all of these, and its precision contract the float32 Newton–Schulz. Our own hand-written Muon baselines had
-the loops too and were twice as slow as `torch.optim.Muon`.
 
 ## GPU machines without an agent
 
@@ -438,12 +423,10 @@ training process with `backend="claude"` and the `opal broker` process with a ma
 the broker's environment needs torch). It is first on the shell's PATH as `python`, and the sandbox may read its venv,
 its site-packages, the base installation (as given and with links resolved) and the folder of each link on the way to
 the real binary, but never a folder that contains your home folder or the run folder: an interpreter started as
-`~/bin/python` (a link to a conda or uv Python) opens `~/bin`, not `~`. The macOS sandbox checks real paths; up to
-OPAL 0.1.2 the resolved base installation was not readable, so a venv on Homebrew's Python
-(`/opt/homebrew/opt/python@3.12` links into `Cellar/`) failed with `operation not permitted: .../python3.12` (a Goldfish
-broker, 2026-10-17). Now such a venv starts (checked on macOS with Claude Code 2.1.302 and a `python -m venv` of
-Homebrew's 3.12: the old settings failed, the new ones ran `python`); a venv on a uv-managed Python works too
-(`uv venv --managed-python`). If an essential folder had to be left out (an interpreter installed into your home
+`~/bin/python` (a link to a conda or uv Python) opens `~/bin`, not `~`. The macOS sandbox checks real paths. A venv on Homebrew's Python
+(`/opt/homebrew/opt/python@3.12` links into `Cellar/`) starts (checked on macOS with Claude Code 2.1.302 and a
+`python -m venv` of Homebrew's 3.12); a venv on a uv-managed Python works too (`uv venv --managed-python`).
+If an essential folder had to be left out (an interpreter installed into your home
 folder itself), OPAL says so when the run starts.
 
 ## What OPAL does not protect against
@@ -515,11 +498,7 @@ than every N updates. Draw each time at random, as `examples/overfit/records.py`
 each epoch). It needs a prompt that states it (the neutral prompt, or a template with a `{validation_note}` field);
 with a template that has no `{validation_note}` field, `wrap` raises. `examples/overfit/train.py` uses it.
 
-**Evaluation integrity (0.2.2).** Two overfit runs read the evaluation times (from the prompt, which then stated them,
-and from the training script) and timed changes of the parameters to them: one scaled the classifier for each
-evaluation and restored it at the next update, one copied a running average into the model 49 updates before each
-evaluation and put the iterate back after it; both planned a final classifier scale chosen on these probes. Besides
-not announcing the times, `eval_integrity` (on by default with `validation=N`; `True` or `False` to choose) checks
+**Evaluation integrity (0.2.2).** `eval_integrity` (on by default with `validation=N`; `True` or `False` to choose) checks
 every evaluation you report: rank 0 copies a fixed sample of each parameter tensor's entries after every update (at
 most 32K entries in all, one `torch.cat` into a ring of 138 updates on the device, no host synchronisation: about
 0.04 ms per update on a CPU and 0.16 ms on Apple MPS for a ResNet-18), and 8 updates after each `report_dev` reads that

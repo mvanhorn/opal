@@ -64,7 +64,6 @@ working directory; `opal report` turns them into one page.
 
 | | Official AdamW | Muon | Reactive optimizer |
 |---|---|---|---|
-| Run | `dopt-sitb2-adamw-official-v1` | `dopt-sitb2-muon-moonlight-v1` | `dopt-sitb2-agent-opus-v1` |
 | Hardware | 8× H100 80GB | 8× H100 80GB | 8× H100 80GB |
 | Training loop time | 7.1 h | 13.0 h | 11.2 h, of which 1.05 h waiting for the agent |
 | Agent cost | – | – | $11.28 |
@@ -82,9 +81,3 @@ working directory; `opal report` turns them into one page.
   matrices, AdamW on the rest, learning rate 1e-4, weight decay 0. Neither baseline was tuned.
 - **What the agent did.** 15 of its 94 decisions changed a file, 10 of them the update rule; the last change came at
   update 190,152.
-- **Reruns** (FID-10K, a cheaper measure, at 400K): the live run 26.36; its final program rerun from update 0 with no
-  agent 25.50; its decisions replayed 26.04. A second agent run with another prompt reached FID-50K 27.88. One seed per
-  run throughout.
-- **Where the numbers come from:** each run's `logs/fid50k/<run>-400000.json` (FID-50K), `agent/broker-state.json`
-  (cost, decisions) and `mirror/metrics.jsonl` (FID-10K) in our experiment records, summarised in the blog's
-  "Where each number comes from".

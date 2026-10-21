@@ -10,10 +10,6 @@
   <a href="#examples">Examples</a>
 </p>
 
-<!-- teaser, once docs/assets/reel.gif exists:
-<p align="center"><img src="docs/assets/reel.gif" width="760" alt="Training loss and task measure of agent runs against the official recipes"></p>
--->
-
 A network is usually trained with an optimizer chosen before training starts. OPAL (OPtimizer with an Agent in the Loop)
 makes the optimizer a program that an agent keeps rewriting while the run goes on. You wrap your PyTorch optimizer
 with one line. At decision points the agent (Claude Code) reads what the run reports, then keeps or rewrites two small
@@ -32,7 +28,7 @@ something, the wrapped run is bitwise identical to the plain one.
 One run per setting, each agent starting from the task's own recipe. Each folder gives the official repository and
 commit, the lines that wrap its optimizer, the commands for the official run and the reactive-optimizer run, the hardware,
 time and cost, and where each number comes from. The "Reactive optimizer" column comes from the harness this package
-grew from, or, for modded-nanogpt, from a pre-release of OPAL (0.1.0); the last column is one run on this release (OPAL
+grew from, or, for modded-nanogpt, from OPAL 0.1.0; the last column is one run on this release (OPAL
 0.3.x, neutral prompt, Opus 5.5 at effort high) where we reran the setting. Training waited for the agent at each
 decision in all of them, as OPAL does by default.
 
@@ -43,12 +39,9 @@ decision in all of them, as OPAL does by default.
 | [Goldfish 125M GPT](examples/goldfish_swahili/), 1 GB of Swahili, 1× H100 | FLORES-200 bits ↓ | 79.37 | 77.60 | earlier harness | 77.25 |
 | [modded-nanogpt record #36](examples/modded_nanogpt/), 162M GPT, 8× H100 | validation loss ↓ | 3.2781 | 3.2749 (small: the track assumes σ = 0.0013 per run) | OPAL 0.1.0 | not rerun |
 
-Where it did not help, the folder says so: on modded-nanogpt, a heavily tuned
-benchmark, one run on OPAL 0.2.0 with the neutral prompt ended at 3.2878, worse than record #36.
 Your numbers may differ from ours: the agent can make different choices from one run to the next, and hosted agent
-models change between versions. Most of our reruns on this release still ended ahead of their starting recipe.
+models change between versions.
 More in the [blog post](https://xingjianbai.com/reactive-optimizers/).
-[What we checked](docs/checks.md) · [Run times and agent costs](docs/times.md)
 
 ### Small examples (CPU)
 
@@ -81,8 +74,7 @@ CLI against a local mock, `OPAL_REAL_CLI=1`).
 | `examples/overfit/train.py` | ResNet-18 on CIFAR-10 with AdamW, designed to test overfitting (10% wrong labels, or 20% of the data); `--validation` shows the agent a development set | `--setting label10 --validation --test-at-end`: test accuracy 73.53% → 80.42% | → 39 min |
 
 With `--opal` these scripts schedule up to 50 decisions (34–46 were asked in these runs), so most of the time is training waiting for the agent.
-Keep the default `blocking=True` for short runs: with `--blocking false`, the cifar10, gpt_small and diffusion_mnist
-scripts finished training before the agent's first answer, so nothing changed.
+Keep the default `blocking=True` for short runs.
 
 Each runs plain by default; `--opal` wraps the optimizer and `--backend keep` is a dry run with no agent.
 

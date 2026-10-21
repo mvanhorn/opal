@@ -30,9 +30,7 @@ def test_prompt_with_the_option_on_states_the_development_set_and_nothing_more(t
         " The training script evaluates the model on a development set of 5,000 images held out from training about "
         "every 25 updates, at times that are not announced, and shows you its loss, and its accuracy when the script "
         "reports one. The performance in the goal is measured on a separate test set that you never see.\n"
-    )  # 0.2.1: "The final performance" -> "The performance" (the authors, 2026-10-18); 0.2.2: "Every 25 updates, the
-    # training script evaluates ..." -> "... about every 25 updates, at times that are not announced, ..." (the authors'
-    # ruling of 2026-10-18: the evaluation times are not exposed)
+    )
     assert "final" not in on.lower() and "final" not in off.lower()
     assert "each epoch" not in task and ("about 2 epochs." + task) in on
     assert "Evaluation data are not shown to you, nor are\nthe test results. The development-set loss" in on

@@ -1,4 +1,4 @@
-"""The broker's ssh path, with a fake ssh on PATH (reported by the Goldfish test codebase, 2026-10-17)."""
+"""The broker's ssh path, with a fake ssh on PATH."""
 
 import os
 import subprocess

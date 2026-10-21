@@ -1,5 +1,5 @@
-"""Regressions from the review of 2026-10-18, the example updater (prompts#1, #3, #4) and the legacy prompt's inline
-example (prompts#8): the example never frees the training script's optimizer state, so a fallback to the starting
+"""The example updater and the legacy prompt's inline
+example: the example never frees the training script's optimizer state, so a fallback to the starting
 program continues with it, on schedule; it says when it cannot reproduce the starting run (another optimizer class, a
 scheduler stepped per epoch); it keeps the starting program's clipping; the legacy example carries AdamW moments over
 from the starting program."""

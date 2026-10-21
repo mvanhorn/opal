@@ -61,7 +61,7 @@ def test_schedule_sentence_matches_the_decision_updates():
     assert text.endswith(
         f" from update {late[0]:,} to update {late[-1]:,} ({len(late)} decisions); {len(at)} scheduled decisions in all."
     )
-    # one early decision, and the late phase's own spacing (not the jump from the early phase: prompts#18)
+    # one early decision, and the late phase's own spacing (not the jump from the early phase)
     at = decision_updates(1000, 10, cadence=50)
     assert at == [50, 200, 300, 400, 500, 600, 700, 800, 900]
     assert taskfacts.schedule_sentence(at, "front", 1000) == (

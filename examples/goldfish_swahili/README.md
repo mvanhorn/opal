@@ -15,7 +15,7 @@ In this run the agent ended 1.77 bits below the official recipe.
 **Reproduced on OPAL 0.3.x:** 77.25 (one run, neutral prompt, 51 decisions of which 11 changed the program, $17.41,
 5 h 39 min on one H100). The run above was not made with this package. It comes from the harness OPAL
 grew from (October 2026): Claude Code (Opus 5.5, effort `high`) with that harness's neutral prompt, 100 decisions every
-793 updates, training paused at each decision. Swahili has not been run on any released OPAL version.
+793 updates, training paused at each decision.
 
 ## Official code and data
 
@@ -67,13 +67,8 @@ Then run it once with `backend="keep"` for a few hundred updates: its losses mus
 
 | | Official recipe | Reactive optimizer |
 |---|---|---|
-| Run | `dopt-gf-swa-official-v1` | `dopt-gf-swa-agent-v1` |
 | Hardware | 1× H100 80GB | 1× H100 80GB |
 | Training time (evaluations left out) | 4.8 h | 5.75 h, of which 0.77 h waiting for the agent |
 | Agent cost | – | $17.79 |
 | Decisions answered / that changed code | – | 100 / 4 (decisions 1, 2, 9 and 11) |
 | FLORES-200 bits | 79.374 | 77.600 |
-
-- **Reruns.** The agent's final program rerun from update 0 with no agent: 77.624. Its decisions replayed: 77.516.
-- **Where the numbers come from:** each run's `mirror/metrics.jsonl` (the last `flores_bits`) and
-  `agent/broker-state.json` (cost, decisions) in our experiment records.

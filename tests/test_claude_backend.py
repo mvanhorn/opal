@@ -493,8 +493,7 @@ def test_failed_call_with_nothing_on_stderr_has_an_error(tmp_path, mode, error):
 
 
 def test_usage_limit_is_a_failed_decision_not_kept(tmp_path):
-    """The coordinator's report from the Amharic runs: a usage limit gave returncode 1 with backend_error "" and was
-    recorded as kept. A failed call must be recorded as failed, and the next message must say it was not answered."""
+    """A failed call must be recorded as failed, and the next message must say it was not answered."""
     exe = fake_cli(tmp_path, mode="limit")
     m, data, s, w = claude_run(tmp_path, exe, steps=120, decisions=2)
     train(m, w, data, 120, sched=s)
@@ -746,7 +745,7 @@ def test_the_default_agent_is_the_blogs_and_another_one_is_warned_about(tmp_path
     assert "may not reproduce" not in capsys.readouterr().err
 
 
-# ----- an unavailable agent is waited for, not skipped (2026-10-20: a subscription switched mid-run) -----------------
+# ----- an unavailable agent is waited for, not skipped -----------------
 
 NOLOGIN = "Not logged in · Please run /login"
 SPEND_RESET = (

@@ -288,7 +288,7 @@ def test_n21_no_broker_gives_up_quickly(tmp_path):
     assert "no broker" in (resp["backend_error"] or "")
 
 
-# ----- F9 (Goldfish Amharic, 2026-10-18): an answer that comes after the run stopped waiting for it ---------------
+# ----- an answer that comes after the run stopped waiting for it ---------------
 
 
 def _mailbox_run(tmp_path, steps=300):

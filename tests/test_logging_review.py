@@ -1,7 +1,7 @@
-"""Regressions from the review of 2026-10-18, records and tools: opt.log with a dict (F13); `opal show` and `say`
-on files being written (F14); incremental reads of the run's records (F20);
-param_groups that follow the updater (L1); no symbolic links followed for program files (B6); a resume into a new
-folder brings the inbox along (B8)."""
+"""Records and tools: opt.log with a dict; `opal show` and `say`
+on files being written; incremental reads of the run's records;
+param_groups that follow the updater; no symbolic links followed for program files; a resume into a new
+folder brings the inbox along."""
 
 import json
 import os

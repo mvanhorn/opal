@@ -1,4 +1,4 @@
-"""The draft neutral prompt's starting analysis: raw loss-trend, update-to-weight, norm and cosine fields; the
+"""The neutral prompt's starting analysis: raw loss-trend, update-to-weight, norm and cosine fields; the
 one-epoch-earlier comparison only when epochs are given and the data repeat in order; a bounded snapshot."""
 
 import json

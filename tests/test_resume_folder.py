@@ -1,7 +1,6 @@
 """A run resumed from a checkpoint continues in the checkpoint's run folder only when that folder is the same run,
 interrupted: in this run's opal_runs/ and not finished. A checkpoint copied from a finished run, or from another place,
-starts the resumed run in its own folder, and the original folder is left as it was (2026-10-20, a blank-slate
-Goldfish integration: a copy of a finished run's checkpoint moved that run's records into attempts/)."""
+starts the resumed run in its own folder, and the original folder is left as it was."""
 
 import json
 import shutil

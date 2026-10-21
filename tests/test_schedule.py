@@ -11,7 +11,7 @@ from test_core import adamw, make, train
 
 
 def old_decision_updates(total, n, early_fraction=0.05, early_share=0.2, cadence=1, spacing="front"):
-    """opal/schedule.py as of 1f217e3 (decision_spacing), copied to prove that the defaults did not move."""
+    """decision_spacing, copied to prove that the defaults did not move."""
     if n <= 0 or total <= 1:
         return []
     if spacing == "uniform":

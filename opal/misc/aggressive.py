@@ -1,4 +1,4 @@
-"""OPAL 0.1.2-aggressive (prompt="aggressive"; the authors' wording of 2026-10-18): the neutral prompt, except that each
+"""OPAL 0.1.2-aggressive (prompt="aggressive"): the neutral prompt, except that each
 decision starts with a review of every parameter group's hyperparameters, the rationale has five parts (observed,
 review, changed, prediction, rules), the decision message no longer says that keeping the programs is a valid decision,
 and reference/example_updater.py has a feedback controller of the learning rates (off by default). Everything else is

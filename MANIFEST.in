@@ -1,2 +1,1 @@
-# the tests need examples/ and tests/data/, which the source distribution leaves out: run them from a clone
 prune tests
