@@ -97,7 +97,7 @@ Trainer: [Try it without an agent](docs/GUIDE.md#try-it-without-an-agent).
 ## Prerequisites
 
 - **A PyTorch training script** that uses `torch.optim` optimizers, on CPU, one GPU or several GPUs of one node (DDP).
-  Python 3.9 or newer, PyTorch 2.3 or newer.
+  Python 3.10 or newer, PyTorch 2.5 or newer (2.6 on Python 3.13).
 - **For an agent run, Claude Code, logged in on the machine that runs rank 0.** Install
   [Claude Code](https://docs.claude.com/en/docs/claude-code), run `claude` once and log in with a Claude subscription
   or an API key. The agent's usage is billed to that account. `max_cost_usd` caps it; there is no cap by default.

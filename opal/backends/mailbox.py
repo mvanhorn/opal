@@ -39,6 +39,7 @@ from pathlib import Path, PurePosixPath
 from ..misc.taskfacts import duration
 from . import unavailable
 from .base import Backend, error_tail
+from ._privacy import redact_secrets
 
 _PROGRAM = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\.py")  # program files, as in programs.py
 AGENT_FILE_MAX = 256 * 1024  # bytes per agent file sent back with a response
@@ -166,6 +167,7 @@ class MailboxBackend(Backend):
         self.answered = 0  # answers received, so a new broker knows the agent had an earlier conversation
         self.sent = {}  # {rel: sha} of the non-program files already in the box (request or files/)
         self.late = None  # (k, workspace, t0) of the request the run stopped waiting for
+        self._wait = time.sleep
 
     @property
     def folder(self) -> Path:
@@ -288,7 +290,7 @@ class MailboxBackend(Backend):
                 if waiting is not None:
                     waiting.end()
                 return dict(out, seconds=out["seconds"] - waited, **({"unavailable_seconds": round(waited, 1)} if waited else {}))
-            time.sleep(self.poll)
+            self._wait(self.poll)
         return self._give_up(k, workspace, t0, "mailbox timeout", waited)
 
     def _say(self, text):
@@ -452,16 +454,25 @@ class _Folder:
             raise RuntimeError(f"ssh write failed ({p.returncode}): {p.stderr.decode()[-300:]}")
 
     def create(self, name, data: bytes) -> bool:
-        """Write `name` only if it does not exist yet (atomic: O_EXCL locally, noclobber over ssh). False if it does."""
+        """Publish complete contents only if `name` does not exist (an exclusive hard link). False if it does."""
         if not self.ssh:
+            path = self._local(name)
+            tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
             try:
-                fd = os.open(self._local(name), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            except FileExistsError:
-                return False
-            with os.fdopen(fd, "wb") as f:
-                f.write(data)
-            return True
-        p = self._sh(f"umask 077 && set -C && cat > {self._q(name)}", data)
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "wb") as f:
+                    f.write(data)
+                try:
+                    os.link(tmp, path)
+                except FileExistsError:
+                    return False
+                return True
+            finally:
+                tmp.unlink(missing_ok=True)
+        temp_name = str(PurePosixPath(name).with_name(f".{PurePosixPath(name).name}.{uuid.uuid4().hex}.tmp"))
+        q, tmp = self._q(name), self._q(temp_name)
+        cleanup = shlex.quote(f"rm -f {tmp}")
+        p = self._sh(f"trap {cleanup} EXIT; umask 077; cat > {tmp} && test ! -e {q} && test ! -L {q} && ln {tmp} {q}", data)
         if p.returncode == 0:
             return True
         probe = self._sh(f"test -e {self._q(name)}")
@@ -855,7 +866,7 @@ def _answer_request(folder, backend, work, ws, run, k, attempt, fresh, beat_stat
     message = _limit_note(req, timeout) + message  # stopped earlier than the run said: the agent is told
     (rec / "message.txt").write_text(message)
     watching = dict(on=True)
-    backend.log = lambda text, k=k: log(f"broker: request {k}: {text}")
+    backend.log = lambda text, k=k: log(f"broker: request {k}: {redact_secrets(text)}")
 
     def watch(k=k, attempt=attempt, watching=watching):
         """Stop the agent if the run ends or cancels this request while the agent works."""
@@ -883,7 +894,7 @@ def _answer_request(folder, backend, work, ws, run, k, attempt, fresh, beat_stat
                 folder.remove(f"unavailable-{k:04d}.json")
             else:
                 kind = (unavailable.classify([reason]) or ("down", reason))[0]
-                body = dict(attempt=attempt, kind=kind, reason=reason, t=time.time())
+                body = dict(attempt=attempt, kind=kind, reason=redact_secrets(reason), t=time.time())
                 folder.write(f"unavailable-{k:04d}.json", json.dumps(body).encode())
         except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
             log(f"broker: request {k}: could not tell the run that the agent is unavailable ({exc})")
@@ -897,6 +908,10 @@ def _answer_request(folder, backend, work, ws, run, k, attempt, fresh, beat_stat
         out = dict(text="", cost_usd=None, returncode=-1, error=traceback.format_exc(limit=4)[-2000:], seconds=0.0)
     finally:
         watching["on"] = False
+    out = dict(out)
+    for field in ("error", "text"):
+        if out.get(field) is not None:
+            out[field] = redact_secrets(out[field])
     backend.cancelled = False  # the backend serves later requests
     files = {}
     for p in sorted(ws.glob("*")):

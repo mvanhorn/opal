@@ -1,0 +1,129 @@
+name: CPU checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ['3.10', '3.11', '3.12', '3.13']
+    env:
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      CUDA_VISIBLE_DEVICES: ''
+      HIP_VISIBLE_DEVICES: ''
+      OPAL_REAL_CLI: '0'
+      TOKENIZERS_PARALLELISM: 'false'
+      HF_HUB_OFFLINE: '1'
+      HF_DATASETS_OFFLINE: '1'
+      # Missing agent executables fail locally; no agent CLI or credentials are installed.
+      ANTHROPIC_API_KEY: ''
+      CLAUDE_CODE_OAUTH_TOKEN: ''
+      OPENAI_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install CPU PyTorch on Linux
+        if: runner.os == 'Linux'
+        run: python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+      - name: Install package and test dependencies
+        id: install
+        run: python -m pip install '.[examples,test,hf]' accelerate
+      - name: Full CPU suite
+        run: pytest -q -ra --junitxml=pytest-results.xml
+      - name: MNIST plain and keep must match byte for byte
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        shell: python
+        run: |
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          checksums = []
+          for name, flags in [('plain', []), ('keep', ['--opal', '--backend', 'keep'])]:
+              result = subprocess.run(
+                  [sys.executable, 'examples/mnist_mlp.py', '--device', 'cpu', '--no-summarize', *flags],
+                  capture_output=True, text=True, timeout=300,
+              )
+              Path(f'mnist-{name}.log').write_text(result.stdout + result.stderr)
+              print(result.stdout)
+              if result.returncode:
+                  print(result.stderr, file=sys.stderr)
+                  raise SystemExit(result.returncode)
+              match = re.search(r'^parameter checksum ([0-9a-f]{12})$', result.stdout, re.M)
+              assert match, f'{name}: missing parameter checksum'
+              checksums.append(match.group(1))
+          assert checksums[0] == checksums[1], checksums
+          # The audited M1/PyTorch 2.14.1 value is 20f642dc05b6. Numerical kernels
+          # differ across architectures and dependency versions: compare the two
+          # runs in each job rather than hardcoding an M1 checksum on Linux x86.
+          print('matching parameter checksum', checksums[0])
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f'Plain = keep parameter checksum: `{checksums[0]}`\n')
+      - name: Distribution and runtime versions agree
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        shell: python
+        run: |
+          from importlib.metadata import version
+          import opal
+
+          installed = version('opal-optimizer')
+          assert opal.__version__ == installed, (opal.__version__, installed)
+
+  lowest-direct:
+    name: macos-latest / Python ${{ matrix.python }} / declared lower bounds
+    runs-on: macos-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12']
+    env:
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      CUDA_VISIBLE_DEVICES: ''
+      HIP_VISIBLE_DEVICES: ''
+      OPAL_REAL_CLI: '0'
+      TOKENIZERS_PARALLELISM: 'false'
+      HF_HUB_OFFLINE: '1'
+      HF_DATASETS_OFFLINE: '1'
+      ANTHROPIC_API_KEY: ''
+      CLAUDE_CODE_OAUTH_TOKEN: ''
+      OPENAI_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install uv and create a fresh environment
+        run: |
+          python -m pip install uv
+          uv venv --seed --python ${{ matrix.python }} .venv
+      - name: Install the declared direct dependency minima
+        # Read pyproject directly: minimizing just the OPAL URL leaves its dependencies latest.
+        run: uv pip install --python .venv/bin/python --resolution lowest-direct -r pyproject.toml --all-extras
+      - name: Install the package without changing those versions
+        run: uv pip install --python .venv/bin/python --no-deps .
+      - name: Full CPU suite on the lower bounds
+        run: .venv/bin/pytest -q -ra --junitxml=pytest-lowest-results.xml

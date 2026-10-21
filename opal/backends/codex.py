@@ -15,6 +15,9 @@ import sys
 import time
 from pathlib import Path
 
+from .._version import __version__
+from ._privacy import redact_secrets
+
 from .base import Cancelled, agent_env
 from .claude import ClaudeBackend, NO_GPU, SANDBOX_NOTE, _contains, _python_paths
 
@@ -98,7 +101,7 @@ class CodexBackend(ClaudeBackend):
             env=agent_env(extra={"CODEX_HOME": str(self.codex_home)}),
         )
         if p.returncode:
-            raise RuntimeError("opal: Codex CLI could not start: " + p.stderr[-300:])
+            raise RuntimeError("opal: Codex CLI could not start: " + redact_secrets(p.stderr)[-300:])
         self.version = p.stdout.strip()
 
     def login_status(self):
@@ -256,6 +259,7 @@ class CodexBackend(ClaudeBackend):
                 text="", cost_usd=None, returncode=-1, error="Codex thread workspace changed", seconds=0, final=True
             )
         payload = dict(
+            client_version=__version__,
             binary=self.binary,
             home=str(isolated_home(self.codex_home)),
             flags=self.flags,

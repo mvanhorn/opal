@@ -75,7 +75,7 @@ def test_integration_docs_reflect_cpu_coverage(path, stale):
     from pathlib import Path
     import opal
 
-    text = (Path(opal.__file__).resolve().parents[1] / path).read_text()
+    text = (Path(__file__).resolve().parents[1] / path).read_text()
     assert stale not in text
 
 

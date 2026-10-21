@@ -4,25 +4,38 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opal-optimizer"
-version = "0.3.4"
+dynamic = ["version"]
 description = "A coding agent inside your training run, rewriting the optimizer while it trains"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Xingjian Bai" }, { name = "Jia-Hao Liang" }, { name = "Jayden Teoh" }, { name = "Vincent Sitzmann" }]
-requires-python = ">=3.9"
-dependencies = ["torch>=2.3", "numpy"]  # numpy: without it, torch warns "Failed to initialize NumPy" at every import
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.5; python_version < '3.13'",
+    "torch>=2.6; python_version >= '3.13'",
+    "numpy>=1.26.4",  # torch's NumPy bridge
+]
 
 [project.optional-dependencies]
-examples = ["torchvision", "numpy", "pyarrow", "pillow"]
-test = ["pytest"]
-hf = ["transformers", "accelerate"]  # opal.hf.OpalTrainer
+examples = [
+    "torchvision>=0.20; python_version < '3.13'",
+    "torchvision>=0.21; python_version >= '3.13'",
+    "numpy>=1.26.4",
+    "pyarrow>=15.0",
+    "pillow>=10.2",
+]
+test = ["pytest>=8.2"]
+hf = ["transformers>=4.57.1", "accelerate>=1.4.0"]  # opal.hf.OpalTrainer
 
 [project.scripts]
 opal = "opal.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["opal*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "opal._version.__version__"}
 
 [tool.setuptools.package-data]
 opal = ["prompts/*.md", "prompts/*.py", "defaults.json"]

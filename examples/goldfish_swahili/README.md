@@ -44,7 +44,7 @@ Training paused at each decision.
 This folder describes wiring only. It has no runnable training commands.
 The official environment cannot install OPAL. word-acquisition-language-models was last tested on Python 3.7,
 PyTorch 1.12 and Transformers 4.18, and its `requirements.txt` pins torch 1.7.1.
-OPAL needs Python ≥ 3.9 and PyTorch ≥ 2.3.
+OPAL needs Python ≥ 3.10 and PyTorch ≥ 2.5.
 This example needs a PyTorch 2 port of the Trainer loop. Our runs used one with the same optimizer, schedule,
 clipping and data order. That port is not in this repository yet. In a plain loop with this recipe, wrap it as follows:
 

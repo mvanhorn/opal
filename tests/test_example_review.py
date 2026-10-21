@@ -124,8 +124,28 @@ def test_goldfish_documents_a_supported_minimum_torch():
     from pathlib import Path
     from packaging.requirements import Requirement
 
-    text = (Path(opal.__file__).resolve().parents[1] / "examples/goldfish_swahili/README.md").read_text()
+    text = (Path(__file__).resolve().parents[1] / "examples/goldfish_swahili/README.md").read_text()
     version = re.search(r"PyTorch ≥ (\d+\.\d+)", text).group(1)
     requirement = next(Requirement(x) for x in metadata("opal-optimizer").get_all("Requires-Dist")
                        if Requirement(x).name == "torch")
     assert requirement.specifier.contains(version)
+
+
+@pytest.mark.parametrize("flags,budget,summarize", [([], 5, True), (["--max-cost-usd", "1", "--no-summarize"], 1, False)])
+def test_mnist_budget_and_summary_flags_reach_wrap(monkeypatch, flags, budget, summarize):
+    import runpy
+    import sys
+
+    class Wrapped(Exception):
+        pass
+
+    def capture(*args, **kwargs):
+        assert kwargs["max_cost_usd"] == budget
+        assert kwargs["summarize"] is summarize
+        raise Wrapped
+
+    script = Path(__file__).resolve().parents[1] / "examples/mnist_mlp.py"
+    monkeypatch.setattr(opal, "wrap", capture)
+    monkeypatch.setattr(sys, "argv", [str(script), "--opal", "--backend", "keep", "--data", "synthetic", "--device", "cpu", *flags])
+    with pytest.raises(Wrapped):
+        runpy.run_path(str(script), run_name="__main__")

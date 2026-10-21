@@ -113,7 +113,7 @@ def test_retry_documentation_distinguishes_unavailable_agents(capsys):
     help_text = " ".join(capsys.readouterr().out.split())
     retries = help_text.split("--retries RETRIES", 2)[-1].split("--unavailable-timeout", 1)[0]
     assert "usage or spend limit" not in retries
-    root = Path(opal.__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[1]
     readme, guide = ((root / p).read_text() for p in ("README.md", "docs/GUIDE.md"))
     assert "unavailable_timeout" in next(line for line in readme.splitlines() if line.startswith("| `backend_options`"))
     assert "the run stops waiting for that decision" not in guide

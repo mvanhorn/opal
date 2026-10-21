@@ -11,9 +11,15 @@ import os
 import queue
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
+
+if __package__:
+    from ._privacy import redact_record, redact_stream
+else:  # standalone transport: importing the sibling helper does not import OPAL or torch
+    from _privacy import redact_record, redact_stream
 
 FIELDS = {
     "inputTokens": "input_tokens",
@@ -25,7 +31,7 @@ TOOLS = {"exec_command", "write_stdin", "shell_command", "apply_patch", "exec", 
 
 
 def emit(value):
-    print(json.dumps(value), flush=True)
+    print(json.dumps(redact_record(value)), flush=True)
 
 
 def toml(value):
@@ -85,7 +91,7 @@ class Client:
         for key, value in request["flags"].items():
             cmd += ["-c", key + "=" + toml(value)]
         # stderr is separate from the wire transcript; it may name account paths, but never read auth contents.
-        self.stderr = Path(request["stderr"]).open("w")
+        self.stderr = tempfile.TemporaryFile(mode="w+")
         self.proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -173,7 +179,7 @@ class Client:
         r = self.request
         init = self.rpc(
             "initialize",
-            dict(clientInfo=dict(name="opal_sol", version="0.3.3"), capabilities=dict(experimentalApi=True)),
+            dict(clientInfo=dict(name="opal_sol", version=r["client_version"]), capabilities=dict(experimentalApi=True)),
         )
         if Path(init["codexHome"]).resolve() != Path(r["home"]).resolve():
             raise IsolationError("App-server used a different CODEX_HOME")
@@ -377,6 +383,9 @@ class Client:
             except subprocess.TimeoutExpired:
                 self.proc.kill()
                 self.proc.wait()
+        self.stderr.seek(0)
+        with Path(self.request["stderr"]).open("w") as output:
+            redact_stream(self.stderr, output)
         self.stderr.close()
 
 

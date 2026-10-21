@@ -362,11 +362,12 @@ schedule.
 
 ## Fitting it into your training script
 
+- Create all parameter groups before you call `opal.wrap`. If the raw optimizer's parameters change afterwards, OPAL raises an error at the next `step` or `zero_grad`.
 - For gradient accumulation, call `opt.step(loss=...)` once per update with that update's mean loss.
 - The agent reads your scheduler's settings and a `LambdaLR` function's source, but not its closure values.
   If warmup and decay lengths come from variables or flags outside the code it reads, state them in `task_facts`.
   For example: `task_facts="linear warmup over 7,935 updates, then linear decay to 0 at update 79,355"`.
-- OPAL needs torch 2.3 or newer and Python 3.9. Repositories pinned to older torch or Transformers need a newer torch,
+- OPAL needs torch 2.5 or newer and Python 3.10. Repositories pinned to older torch or Transformers need a newer torch,
   which may require small fixes. Older Transformers with recent torch need `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1`
   to resume from a checkpoint.
 - Hand gradient clipping to OPAL. Delete `clip_grad_norm_(model.parameters(), x)` from your loop and pass
@@ -384,6 +385,7 @@ schedule.
   including across a checkpoint. `ReduceLROnPlateau` keeps the metric passed to `step()` as `best`.
   Programs can read it through `spec["user_schedulers"]`, so pass only values you would show the agent.
 - For several optimizers or schedulers, pass lists: `wrap([muon, adamw], model, scheduler=[s1, s2], ...)`.
+  OPAL cannot combine several optimizers with an enabled GradScaler: `scaler.step` raises an error before any update.
 - For fp16 with GradScaler, use `scaler.step(opt, loss=loss)`. Skipped updates are not counted.
   Call `opt.close()` when the loop ends. With a fused optimizer, the scaler takes its generic unscale path.
   The starting program then matches the plain run numerically, with possible differences in parameter bytes.
@@ -393,6 +395,7 @@ schedule.
   Load it on every rank after `wrap(...)`. A program crash after its trial window stops the job.
   Restarting from a checkpoint replaces it with its predecessor, or the starting program if that also crashed.
   You can use the same run folder or a new one. The checkpoint remembers the old folder.
+  In DDP, the consistency checks compare SHA-256 digests of the parameter bytes, copied to CPU in chunks at each check.
 - For checkpoints, save `opt.state_dict()` and your scheduler's `state_dict()`.
   OPAL's state holds the programs, their state, the agent session, and your optimizers' and schedulers' state,
   whatever the program's `state_dict()` holds. It also holds analysis memory.
@@ -436,6 +439,7 @@ schedule.
   Call `opt.step(loss=loss)` once per update. See the complete CPU recipe above for clipping.
   CPU runs match byte for byte without fp16 GradScaler or Accelerate gradient accumulation.
   `wrap` refuses those modes. Wrapping before `prepare` fails because `prepare` saves and reloads the wrapper's state.
+  If you wrap after `accelerator.prepare`, `accelerator.save_state` and `accelerator.load_state` also save and restore OPAL's program, its version and the update count.
   The model may have any number of DDP, Accelerate or `torch.compile` wrappers.
 - If another framework calls `step()` for you, keep a handle to the wrapped optimizer.
   Call `opt.observe(loss)` once per update and `opt.log(...)` for metrics. Lightning has no test yet.

@@ -35,6 +35,7 @@ import torch.distributed as dist
 from . import context, defaults, estimate, programs
 from .agent import AgentWorker, Run, new_run_dir, now_stamp
 from .backends import make_backend
+from .backends._privacy import redact_secrets
 from .misc import audit, boundary, integrity, neutral_analysis, waiting
 from .misc.checkpoint import CheckpointMixin
 from .misc.ddp import DDPMixin
@@ -57,12 +58,13 @@ def wrap(optimizer, model, *, total_steps, goal, scheduler=None, decisions=None,
 
     optimizer        the training script's optimizer(s); the starting program calls them unchanged. With Accelerate,
                      wrap after accelerator.prepare (the torch optimizer inside is wrapped; no GradScaler, no
-                     accumulation through Accelerate) and call the wrapped optimizer's step(loss=...)
+                     accumulation through Accelerate) and call the wrapped optimizer's step(loss=...). The prepared
+                     optimizer delegates checkpoint save/load to OPAL, including accelerator.save_state/load_state
     model            the model being trained, bare or wrapped by DDP / torch.compile (names, shapes, source code)
     total_steps      number of updates in the run (opt.step() calls that apply an update)
     goal             one sentence: what the run trains and what it is judged by
     scheduler        the training script's LR scheduler(s); their step() runs while the program follows them
-    backend          "claude" (default), "mailbox:<dir>", "keep" (no agent, every decision keeps the
+    backend          "claude" (default), "codex", "mailbox:<dir>", "keep" (no agent, every decision keeps the
                      programs), or a function(workspace, message, system) -> rationale str that may edit the files
     backend_options  claude: model= (default "claude-opus-5-5") and effort= (default "high"), the agent of the blog's
                      runs; another model or effort prints one line at the start saying the blog's results may not be
@@ -89,7 +91,8 @@ def wrap(optimizer, model, *, total_steps, goal, scheduler=None, decisions=None,
                      (end as a fraction of training, count), here 20 evenly over the first 5% and then 30 evenly over
                      the rest; [500, 1000, 5000]: these updates. A list gives the count itself (leave decisions
                      out, or make it agree). Each is moved up to the next check (opal/schedule.py)
-    max_cost_usd     stop asking once the backend reports this much spent (as Claude Code reports it)
+    max_cost_usd     stop asking when the remaining USD budget cannot cover another estimated call (since 0.3.4);
+                     training continues with the current programs. Codex reports tokens and cannot enforce a USD cap
     every            how often OPAL looks at the run, in updates (default 50). At each check it reads the training
                      losses, looks for a non-finite one, asks a scheduled decision when one is due (decisions happen
                      only at checks), and runs the agent's analysis program (whose own interval, EVERY, the agent may
@@ -313,7 +316,9 @@ class AgentOptimizer(
         verbose=True,
     ):
         self.user_optimizers = list(optimizer) if isinstance(optimizer, (list, tuple)) else [optimizer]
+        accelerated = [o for o in self.user_optimizers if _is_accelerate(o)]
         self.user_optimizers = [_inside_accelerate(o) for o in self.user_optimizers]
+        self._user_parameter_ids = self._parameter_ids()
         if scheduler is None:
             self.user_schedulers = []
         else:
@@ -418,6 +423,7 @@ class AgentOptimizer(
         self._loss_buf = torch.zeros(max(1, self.default_every), dtype=torch.float32, device=self.device)
         self._losses_from = 1
         self._pending_losses, self._pending_from = [], 1
+        self._pending_omitted = 0
         self._analysis_losses, self._analysis_metrics, self._next_analysis = ([], [], self.default_every)
         self._reasons, self._sched_i = [], 0
         self._nonfinite_episode = False
@@ -554,6 +560,10 @@ class AgentOptimizer(
                 **(dict(eval_integrity=dict(threshold=self._integrity_threshold)) if self._integrity else {}),
             )
         atexit.register(_close_at_exit, weakref.ref(self))
+        # Accelerator retains these prepared objects for save_state/load_state. Keep their delegation attached
+        # to OPAL, while the starting updater and the user's torch schedulers still hold the raw optimizers.
+        for prepared in accelerated:
+            prepared.optimizer = self
 
     def _check_defaults(self, prompt, program):
         """OPAL's defaults are fixed (opal/defaults.py): say loudly when the files this run is about to use differ from
@@ -693,8 +703,9 @@ class AgentOptimizer(
                     bad = programs.unpicklable(up.state_dict()) if files != self._agent_exempt() else []
                 if bad:
                     raise TypeError(
-                        "state_dict() must pickle without objects, classes or functions defined in your program files "
-                        "(and without lambdas or open files), so that checkpoints load in a new process; found: "
+                        "state_dict() must contain only tensors, primitive values, lists, tuples and dicts "
+                        "(including Counter/OrderedDict), "
+                        "without cycles, so that checkpoints load with weights_only=True; found: "
                         + "; ".join(bad)
                     )
                 groups = self._groups_of(up)
@@ -877,9 +888,37 @@ class AgentOptimizer(
         (when there is a summarizer) and a new report."""
         if resp.get("files"):
             self._live.summarize(k, resp.get("text"), req["files"], resp["files"], self.total)
+        if self._closed:
+            self.run.event(
+                "cost_settled", k=k,
+                cost_usd=None if self.worker.usage is not None or self.worker.backend.name == "codex"
+                else round(self.worker.cost, 4),
+            )
         self._live.refresh()
 
     # ----- the update -------------------------------------------------------------------------------------------
+
+    def _parameter_ids(self):
+        return tuple(frozenset(id(p) for g in o.param_groups for p in g["params"]) for o in self.user_optimizers)
+
+    def _check_user_parameters(self):
+        if self._parameter_ids() != self._user_parameter_ids:
+            raise RuntimeError(
+                "opal: the raw optimizer's parameter set changed after wrapping; "
+                "create all parameter groups before opal.wrap"
+            )
+
+    @property
+    def _step_supports_amp_scaling(self):
+        # GradScaler queries this before unscaling or deciding whether to skip the wrapper's step.
+        if len(self.user_optimizers) > 1:
+            raise RuntimeError(
+                "opal: multiple optimizers with GradScaler are unsupported: "
+                "a combined step cannot preserve each optimizer's independent overflow handling; "
+                "use a single optimizer or disable gradient scaling"
+            )
+        self._check_user_parameters()
+        return False
 
     def observe(self, loss):
         """Record this update's loss when a framework calls step() for you (Accelerate, Lightning, HF Trainer). Called
@@ -901,6 +940,7 @@ class AgentOptimizer(
 
     @torch.no_grad()
     def step(self, closure=None, loss=None):
+        self._check_user_parameters()
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
@@ -1098,6 +1138,9 @@ class AgentOptimizer(
         del self._analysis_losses[:-100_000]
         wake = self._run_analysis(u) if analyze else None
         self._pending_losses.extend(losses)
+        dropped = max(0, len(self._pending_losses) - 100_000)
+        self._pending_from += dropped
+        self._pending_omitted += dropped
         del self._pending_losses[:-100_000]
         if new_episode:
             bad = sum(1 for _, p in self.named if not bool(torch.isfinite(p.detach()).all()))
@@ -1120,6 +1163,10 @@ class AgentOptimizer(
             self._reasons = []  # an answer could no longer act on this run
         if self.worker is not None:
             self.worker.collect_late()  # an answer that came after the backend stopped waiting, before a newer request
+        if self.worker is None or self.worker.k >= self.max_decisions or (
+            not self.worker.busy and not self._budget_left()
+        ):
+            self._reasons = []  # no future call can consume these; keep analysis reports, not unbounded wake strings
         wakes_only = all(r.startswith(WAKE) for r in self._reasons)
         if self._reasons and self.worker is not None and not self.worker.busy and self._budget_left(wakes_only):
             self._submit(u, pause=new_episode and self.pause_on_nonfinite)
@@ -1271,6 +1318,7 @@ class AgentOptimizer(
         inbox = dict(
             update=u,
             losses=self._pending_losses,
+            losses_omitted=self._pending_omitted,
             losses_from=self._pending_from,
             reports=list(self.reports),
             reports_made=self._reports_made,
@@ -1320,6 +1368,7 @@ class AgentOptimizer(
         self.errors.clear()
         self._reasons, self._last_applied, self._last_answer = [], None, None
         self._pending_losses, self._pending_from = [], u + 1
+        self._pending_omitted = 0
         self._skipped, self._reports_made = [], 0
 
     def _blocking_point(self, u):
@@ -1506,6 +1555,7 @@ class AgentOptimizer(
         return out
 
     def zero_grad(self, set_to_none=True):
+        self._check_user_parameters()
         for _, p in self.named:
             if p.grad is not None:
                 if set_to_none:
@@ -1519,7 +1569,7 @@ class AgentOptimizer(
 
     def add_param_group(self, param_group):
         if getattr(self, "_initialised", False):
-            raise NotImplementedError("opal: add parameters to the optimizer before wrapping it")
+            raise NotImplementedError("opal: create all parameter groups before opal.wrap")
         super().add_param_group(param_group)
 
     def close(self, interrupted=False):
@@ -1540,6 +1590,9 @@ class AgentOptimizer(
         if self.worker is not None and self.worker.busy and be is not None:
             be.cancel()  # its answer could no longer be applied
             self.run.event("cancelled", k=self.worker.k)
+            if self.worker.thread is not None:
+                self.worker.thread.join(timeout=1.0)  # bounded settlement; slower answers record cost_settled
+        settling = self.worker is not None and self.worker.thread is not None and self.worker.thread.is_alive()
         checked = None
         if self._integrity is not None:  # the evaluations of the last updates, with what is left of their window
             try:
@@ -1552,8 +1605,9 @@ class AgentOptimizer(
             update=self.update,
             version=self.version,
             decisions=self.worker.k if self.worker else 0,
-            cost_usd=(None if self.worker and (self.worker.usage is not None or be.name == "codex")
+            cost_usd=(None if settling or self.worker and (self.worker.usage is not None or be.name == "codex")
                       else round(self.worker.cost, 4) if self.worker else 0),
+            **(dict(pending_decision=self.worker.k) if settling else {}),
             **(dict(usage=self.worker.usage) if self.worker and self.worker.usage is not None else {}),
             **(dict(eval_integrity=checked) if checked else {}),
         )
@@ -1567,7 +1621,7 @@ class AgentOptimizer(
 
     def _log(self, msg):
         if self.verbose:
-            print(f"[opal] {msg}", file=sys.stderr, flush=True)
+            print(f"[opal] {redact_secrets(msg)}", file=sys.stderr, flush=True)
 
     def _notice(self, msg):
         """A line the user should not miss (the agent will not be asked again): on stdout."""

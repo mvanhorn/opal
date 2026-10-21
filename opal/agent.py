@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import programs
 from .misc import aggressive, audit
+from .backends._privacy import redact_secrets
 
 
 class Run:
@@ -117,7 +118,7 @@ class AgentWorker:
             (ws / "inbox" / f"decision-{k:03d}.json").write_text(json.dumps(req["inbox"], indent=1, default=str))
             message = format_message(k, req)
             (rec / "message.txt").write_text(message)
-            self.backend.log = lambda text, k=k: self.log(f"decision {k}: {text}")
+            self.backend.log = lambda text, k=k: self.log(f"decision {k}: {redact_secrets(text)}")
             self.backend.training_waits = bool(req.get("blocking"))  # for the line when the agent is unavailable
             out = self.backend.decide(ws, message, self.system, rec)
         except Exception:
@@ -127,6 +128,10 @@ class AgentWorker:
     def _finish(self, k, req, out):
         """Check the programs the agent left in the workspace and record its answer as ready."""
         rec, ws = self.run.decisions / f"{k:03d}", self.run.workspace
+        out = dict(out)
+        for field in ("error", "text"):
+            if out.get(field) is not None:
+                out[field] = redact_secrets(out[field])
         files, changed, errors = None, False, []
         try:
             files = programs.program(programs.read_dir(ws))

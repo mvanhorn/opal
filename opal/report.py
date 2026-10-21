@@ -705,14 +705,20 @@ def write_report(run) -> Path:
         for d in decisions.values()
     ]
     costs = [v for v in costs if _number(v)]
-    cost = next(
+    settled = next(
         (
-            e["cost_usd"]
+            e
             for e in reversed(events)
-            if _finished(events) and e.get("kind") in ("end", "interrupted") and _number(e.get("cost_usd"))
+            if _finished(events) and e.get("kind") in ("end", "interrupted", "cost_settled")
         ),
-        sum(costs) if costs else None,
+        {},
     )
+    cost = settled.get("cost_usd")
+    if costs:
+        cost = max(cost, sum(costs)) if _number(cost) else sum(costs)
+    pending = settled.get("pending_decision")
+    if pending is not None and not _number(decisions.get(pending, {}).get("response", {}).get("cost_usd")):
+        cost = None  # a cancelled call has not reported its charge yet
     summary_costs = [
         r["summary"].get("cost_usd") for r in rows if r["summary"] and _number(r["summary"].get("cost_usd"))
     ]

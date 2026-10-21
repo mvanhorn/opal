@@ -500,7 +500,8 @@ def _ddp_agent(text):
 
 def _h4_worker(rank, world, port, out, phase):
     os.environ.update(MASTER_ADDR="127.0.0.1", MASTER_PORT=str(port))
-    dist.init_process_group("gloo", rank=rank, world_size=world)
+    rendezvous = (Path(out) / f"rendezvous-{phase}").resolve().as_uri()
+    dist.init_process_group("gloo", init_method=rendezvous, rank=rank, world_size=world)
     os.chdir(out)  # the default run folder: ./opal_runs/<time>-<pid>-<random>
     torch.manual_seed(0)
     model = torch.nn.Sequential(torch.nn.Linear(8, 16), torch.nn.ReLU(), torch.nn.Linear(16, 1))

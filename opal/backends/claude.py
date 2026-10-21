@@ -24,6 +24,7 @@ from pathlib import Path
 from .. import programs
 from . import unavailable
 from .base import Backend, Cancelled, agent_env, error_tail
+from ._privacy import redact_secrets
 
 _SYSTEM_READ_MAC = (
     "/System",
@@ -161,7 +162,7 @@ def linux_sandbox_problem():
     except (OSError, subprocess.TimeoutExpired) as exc:
         return f"bubblewrap could not run ({exc})"
     if p.returncode != 0:
-        return "bubblewrap cannot create a sandbox here: " + ((p.stderr or "").strip()[-300:] or f"exit {p.returncode}")
+        return "bubblewrap cannot create a sandbox here: " + (error_tail(p.stderr) or f"exit {p.returncode}")
     return None
 
 
@@ -526,6 +527,7 @@ class ClaudeBackend(Backend):
         return not getattr(self, "cancelled", False)
 
     def _say(self, text):
+        text = redact_secrets(text)
         if self.log is not None:
             self.log(text)
         else:

@@ -339,6 +339,55 @@ def test_two_brokers_answer_a_request_once(tmp_path, fast):
     assert all(o["returncode"] == 0 for o in out)
 
 
+def test_a_claim_being_written_cannot_be_acquired_by_two_brokers(tmp_path, monkeypatch):
+    folder = _Folder(tmp_path / "box")
+    folder.make()
+    entered, release = threading.Event(), threading.Event()
+    results = {}
+    real_fdopen = os.fdopen
+
+    def pause_before_writing(fd, *args, **kwargs):
+        if threading.current_thread() is creator:
+            entered.set()
+            assert release.wait(10)
+        return real_fdopen(fd, *args, **kwargs)
+
+    creator = threading.Thread(
+        target=lambda: results.__setitem__("first", mailbox._claim(folder, 1, "attempt", "first", lambda m: None))
+    )
+    monkeypatch.setattr(mailbox.os, "fdopen", pause_before_writing)
+    try:
+        creator.start()
+        assert entered.wait(10)
+        results["second"] = mailbox._claim(folder, 1, "attempt", "second", lambda m: None)
+    finally:
+        release.set()
+        creator.join(10)
+    assert not creator.is_alive()
+    assert sum(results.values()) == 1, results
+    assert json.loads(folder.read("claim-0001.json"))["broker"] == next(k for k, won in results.items() if won)
+    assert not list(folder._local().glob("*.tmp"))
+
+
+@pytest.mark.parametrize("remote", [False, True], ids=["local", "ssh-command"])
+def test_exclusive_creation_publishes_complete_private_contents(tmp_path, monkeypatch, remote):
+    import subprocess
+
+    folder = _Folder(tmp_path / "box with ' spaces", ssh="fake-host" if remote else None)
+    if remote:
+        monkeypatch.setattr(
+            folder, "_sh",
+            lambda cmd, data=None: subprocess.run(["sh", "-c", cmd], input=data, capture_output=True, timeout=10),
+        )
+    folder.make()
+    payload = b'{"broker": "winner", "attempt": "current"}'
+    assert folder.create("claim-0001.json", payload)
+    assert not folder.create("claim-0001.json", b"another broker")
+    assert folder.read("claim-0001.json") == payload
+    assert folder._local("claim-0001.json").stat().st_mode & 0o777 == 0o600
+    assert not list(folder._local().glob("*.tmp"))
+
+
 def test_a_broker_that_claims_after_the_answer_does_not_answer_again(tmp_path, fast, monkeypatch):
     """The race behind an occasional failure of the test above on a busy machine: one broker sees request 1 pending,
     the other answers it and removes its claim, then the first one claims it."""

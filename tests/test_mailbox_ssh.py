@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import threading
 
 from opal.backends.mailbox import _Folder
 
@@ -109,15 +110,19 @@ def test_broker_can_give_up_before_it_selects_a_run(tmp_path, monkeypatch):
     from opal.backends.base import KeepBackend
 
     clock = [100.0]
+    owner = threading.get_ident()
+    real_time, real_sleep = mailbox.time.time, mailbox.time.sleep
 
     def sleep(seconds):
+        if threading.get_ident() != owner:
+            return real_sleep(seconds)
         clock[0] += seconds
         assert clock[0] < 102.0, "initial mailbox selection ignored give_up_after"
 
     def fail(*args):
         raise OSError("mailbox unreadable")
 
-    monkeypatch.setattr(mailbox.time, "time", lambda: clock[0])
+    monkeypatch.setattr(mailbox.time, "time", lambda: clock[0] if threading.get_ident() == owner else real_time())
     monkeypatch.setattr(mailbox.time, "sleep", sleep)
     monkeypatch.setattr(mailbox, "RETRY_SECONDS", 0.1)
     monkeypatch.setattr(mailbox, "_pick_run", fail)

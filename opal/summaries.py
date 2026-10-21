@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from .backends.base import agent_env
+from .backends._privacy import redact_secrets
 
 TAGS = (
     "common practice",
@@ -208,6 +209,11 @@ def ensure(record_dir, summarizer, k, rationale, old: dict, new: dict, total=Non
     if cached is not None or summarizer is None:
         return cached
     out = summarizer(message(k, rationale, unified_diff(old, new), total))
+    for field in ("error", "reply", "summary"):
+        if out.get(field) is not None:
+            out[field] = redact_secrets(out[field])
+    if out.get("dropped_tags"):
+        out["dropped_tags"] = [redact_secrets(tag) for tag in out["dropped_tags"]]
     out.update(model=summarizer.model, utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"))
     record_dir.mkdir(parents=True, exist_ok=True)
     if "error" in out:

@@ -1,6 +1,5 @@
 """Closing a training run also stops its background mailbox wait."""
 
-from opal.backends import mailbox
 from test_mailbox_backend import mailbox_for, workspace
 
 
@@ -14,7 +13,7 @@ def test_cancelling_a_mailbox_wait_stops_the_poll_loop(tmp_path, monkeypatch):
         backend.cancel()
         assert len(polls) < 3, "cancelled mailbox kept polling"
 
-    monkeypatch.setattr(mailbox.time, "sleep", cancel_on_poll)
+    monkeypatch.setattr(backend, "_wait", cancel_on_poll)
     out = backend.decide(ws, "message", "system", tmp_path)
     assert out["returncode"] != 0 and "cancel" in out["error"]
     assert len(polls) == 1

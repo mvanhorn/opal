@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+from .backends._privacy import redact_secrets
+
 
 # Match locations before HTML escaping, including paths inside quoted code/JSON.
 _REMOTE = re.compile(r"\b[a-zA-Z][\w+.-]*://[^\s<>\"'`]+|\barn:aws[^\s<>\"'`]+")
@@ -136,6 +138,7 @@ class Privacy:
         return "[path omitted]"
 
     def text(self, text):
+        text = redact_secrets(text)
         text = _REMOTE.sub("[remote location omitted]", text)
         text = _UNC.sub("[path omitted]", text)
         text = self.run_path.sub(self._path, text)

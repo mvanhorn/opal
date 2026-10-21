@@ -10,6 +10,8 @@ import threading
 import time
 from pathlib import Path
 
+from ._privacy import redact_secrets, redact_stream
+
 # The agent CLI's environment is built from an allowlist: what a CLI needs to run and log in, and what the training
 # interpreter needs to start in the agent's shell. Everything else of the user's (database URLs, tokens in oddly named
 # variables, ssh agents, other tools' homes) stays out, since the agent's shell could print it into the provider's
@@ -61,13 +63,12 @@ _ALLOWED_PREFIXES = ("LC_", "XDG_")
 # a kept variable whose value holds a password in a URL (user:pass@host) is still dropped, proxies excepted
 _URL_PASSWORD = re.compile(r"://[^/\s:@]+:[^/\s@]+@")
 _PROXIES = frozenset(n for n in _ALLOWED if n.lower().endswith("_proxy"))
-_SECRET = re.compile(r"sk-[A-Za-z0-9_\-]{8,}|Bearer\s+\S+")
 
 
 def error_tail(text, n=300) -> str:
     """The end of an agent CLI's error text on one line, for logs and records: at most n characters, with anything
     shaped like an API key or a bearer token masked."""
-    return _SECRET.sub("<hidden>", " ".join(str(text or "").split()))[-n:]
+    return redact_secrets(" ".join(str(text or "").split()))[-n:]
 
 # Started next to each agent process: stops the agent (its whole process group) if the training process dies
 # without close() (SIGTERM from a scheduler, SIGKILL, a crash), so no agent keeps spending after its run is gone.
@@ -161,11 +162,12 @@ class Backend:
         open can make this wait."""
         if getattr(self, "cancelled", False):
             raise Cancelled("the run ended before the agent started")
-        with tempfile.TemporaryFile(mode="w+") as err:
+        with tempfile.TemporaryFile(mode="w+") as err, tempfile.TemporaryFile(mode="w+") as captured:
+            record = hasattr(stdout, "write")
             proc = self.proc = subprocess.Popen(
                 cmd,
                 stdin=subprocess.PIPE,
-                stdout=stdout,
+                stdout=captured if record else stdout,
                 stderr=err,
                 text=True,
                 cwd=cwd,
@@ -201,8 +203,16 @@ class Backend:
                 kill_group(proc.pid, grace=1.0)  # the CLI's leftovers, also after a normal exit
                 if self.proc is proc:
                     self.proc = None
+                if record:
+                    captured.seek(0)
+                    redact_stream(captured, stdout)
+                    stdout.flush()
             err.seek(0)
-            text = err.read()
+            captured.seek(0)
+            captured.truncate()
+            redact_stream(err, captured)
+            captured.seek(0)
+            text = captured.read()
         return subprocess.CompletedProcess(cmd, proc.returncode, None, text)
 
     def _kill(self):

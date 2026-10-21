@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import sys
 
 import torch
@@ -26,19 +27,24 @@ class DDPMixin:
         return bool(t.item())
 
     def _rank_differences(self):
-        """Compare every parameter (its float64 sum and sum of squares, two numbers per tensor in two all-reduces).
-        A sample of tensors is not enough: gradients are averaged, so a tensor the updater treats the same on every
-        rank can never differ, and the one that drifts may be the one left out. Optimizer state is not compared or
-        broadcast (a sharded optimizer keeps different state on each rank by design)."""
-        dt = torch.float32 if any(p.device.type == "mps" for _, p in self.named) else torch.float64  # MPS: no float64
-        s = torch.stack(
-            [t for _, p in self.named for t in (p.detach().to(dt).sum(), p.detach().to(dt).square().sum())]
-        )
+        """Compare SHA-256 digests of every tensor's dtype, shape and ordered bytes (two gloo all-reduces).
+
+        These collision-resistant digests detect permutations that sum/sum-of-squares misses. Checks copy parameter
+        bytes to CPU in bounded chunks and synchronize device work at check boundaries. Optimizer state is neither
+        compared nor broadcast: a sharded optimizer keeps different state on each rank by design.
+        """
+        digests = []
+        for _, p in self.named:
+            digest = hashlib.sha256(f"{p.dtype}:{tuple(p.shape)}".encode())
+            for chunk in p.detach().reshape(-1).split(1_048_576):
+                raw = chunk.contiguous().view(torch.uint8).cpu().numpy()
+                digest.update(memoryview(raw))
+            digests.append(list(digest.digest()))
+        s = torch.tensor(digests, dtype=torch.uint8)
         lo, hi = s.clone(), s.clone()
-        dist.all_reduce(lo, op=dist.ReduceOp.MIN)
-        dist.all_reduce(hi, op=dist.ReduceOp.MAX)
-        lo, hi = torch.nan_to_num(lo, nan=0.0), torch.nan_to_num(hi, nan=0.0)
-        bad = sorted({i // 2 for i in torch.nonzero(lo != hi).flatten().tolist()})
+        dist.all_reduce(lo, op=dist.ReduceOp.MIN, group=self.ctrl)
+        dist.all_reduce(hi, op=dist.ReduceOp.MAX, group=self.ctrl)
+        bad = torch.nonzero((lo != hi).any(dim=1)).flatten().tolist()
         return [self.named[i][0] for i in bad]
 
     def _check_ranks(self, u):

@@ -1,1 +1,6 @@
 prune tests
+graft docs
+graft skills
+graft examples
+include CHANGELOG.md
+global-exclude __pycache__ *.py[cod]

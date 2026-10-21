@@ -13,6 +13,7 @@ import pickle
 import re
 import sys
 import types
+from collections import Counter, OrderedDict
 from pathlib import Path
 
 import torch
@@ -171,9 +172,42 @@ class _ProgramRefPickler(pickle.Pickler):
 
 
 def unpicklable(obj) -> list:
-    """Why a state_dict could not be saved in a checkpoint that loads in a new process: objects, classes or functions
-    defined in the agent's program files, lambdas, open files... An empty list means it is fine."""
+    """Reject unsafe agent state before saving: tensors, primitives and acyclic standard containers only.
+
+    Pickleability alone does not imply compatibility with torch.load(weights_only=True). The user's starting
+    optimizers remain exempt at the call sites; this contract is for state returned by agent programs.
+    """
+    active = set()
+
+    def plain(value, depth=0):
+        if type(value) in (type(None), bool, int, float, complex, str, bytes):
+            return
+        if type(value) in (torch.Tensor, torch.nn.Parameter):
+            plain(vars(value), depth + 1)  # tensor Python attributes are serialized too
+            return
+        # These two dict types are allowlisted by torch's weights-only loader. MultiStepLR uses Counter.
+        if type(value) not in (dict, Counter, OrderedDict, list, tuple):
+            raise TypeError(f"non-plain state type {type(value).__module__}.{type(value).__qualname__}")
+        if id(value) in active:
+            raise TypeError("cyclic state container")
+        if depth > 100:
+            raise TypeError("state nesting exceeds 100 levels")
+        active.add(id(value))
+        try:
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    plain(key, depth + 1)
+                    plain(item, depth + 1)
+            else:
+                for item in value:
+                    plain(item, depth + 1)
+            if type(value) in (Counter, OrderedDict):
+                plain(vars(value), depth + 1)
+        finally:
+            active.remove(id(value))
+
     try:
+        plain(obj)
         _ProgramRefPickler(io.BytesIO(), protocol=pickle.HIGHEST_PROTOCOL).dump(obj)
     except Exception as exc:  # PicklingError, AttributeError (local objects), TypeError (files, locks)
         return [f"{type(exc).__name__}: {exc}"[:300]]

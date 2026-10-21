@@ -36,6 +36,8 @@ parser.add_argument(
     "--schedule", choices=["front", "uniform"], default="front", help="when the decisions are asked (wrap's schedule)"
 )  # opal
 parser.add_argument("--effort", default=None, help="agent effort (default: high)")  # opal
+parser.add_argument("--max-cost-usd", type=float, default=5, help="soft agent budget in USD; summaries cost extra")
+parser.add_argument("--no-summarize", action="store_true", help="disable paid decision summaries")
 parser.add_argument("--out", default=None, help="write the result JSON here")
 parser.add_argument("--save", default=None, help="write the final weights (model.pt) into this folder")
 parser.add_argument(
@@ -96,7 +98,8 @@ if args.opal:  # opal
         decisions=args.decisions,
         schedule=args.schedule,
         blocking={"true": True, "false": False}.get(args.blocking, args.blocking),
-        max_cost_usd=5,
+        max_cost_usd=args.max_cost_usd,
+        summarize=not args.no_summarize,
     )
 
 
