@@ -219,7 +219,7 @@ Recorded single runs on one H100, Codex vs plain: `gpt_small` validation loss 4.
 
 ## Status and limitations
 
-v0.3.3, under active development. Tested on one GPU and on DDP within one node (NCCL; eager and `torch.compile`).
+v0.3.4, under active development. Tested on one GPU and on DDP within one node (NCCL; eager and `torch.compile`).
 Multi-node, FSDP and DeepSpeed are not supported. Accelerate works when you wrap after `accelerator.prepare` (without
 fp16 GradScaler or Accelerate's gradient accumulation), and the HF Trainer through `opal.hf.OpalTrainer`, both tested on
 CPU; Lightning should work through `opt.observe(loss)` but is untested. The agent can make a run worse: it cannot restart or roll back training, only
