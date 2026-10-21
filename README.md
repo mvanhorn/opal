@@ -38,7 +38,7 @@ decision in all of them, as OPAL does by default.
 
 | Example | Measure | Official recipe | Reactive optimizer (one run) | Made with | On OPAL 0.3.x |
 |---|---|---|---|---|---|
-| [SiT-B/2](examples/sit_b2/), ImageNet 256, 400K updates, 8× H100 | FID-50K ↓ | 35.7 (Muon: 30.3) | 23.6 | earlier harness | not rerun |
+| [SiT-B/2](examples/sit_b2/), ImageNet 256, 400K updates, 8× H100 | FID-50K ↓ | 35.7 with our evaluator (the SiT paper reports 33.0 with the ADM evaluator; Muon: 30.3) | 23.6 | earlier harness | not rerun |
 | [RAEv2-B](examples/raev2_b/), ImageNet 256, 20 epochs, 8× H100 | FID-50K ↓ | 3.39 | 3.10 asked for efficiency; 3.45 with the neutral prompt | earlier harness | 3.19 |
 | [Goldfish 125M GPT](examples/goldfish_swahili/), 1 GB of Swahili, 1× H100 | FLORES-200 bits ↓ | 79.37 | 77.60 | earlier harness | 77.25 |
 | [modded-nanogpt record #36](examples/modded_nanogpt/), 162M GPT, 8× H100 | validation loss ↓ | 3.2781 | 3.2749 (small: the track assumes σ = 0.0013 per run) | OPAL 0.1.0 | not rerun |
