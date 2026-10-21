@@ -277,3 +277,20 @@ def test_redaction_nested_escape_depth_and_window_boundary(layers):
     assert 'CanaryPrivate' not in result
     assert result.startswith('normal code ' + 'x' * 61400 + ' ')
     assert result.endswith(' trailing')
+
+
+
+@pytest.mark.parametrize('quote', ["'", '"'])
+def test_adjacent_repr_fragments_cannot_reassemble_a_credential(tmp_path, quote):
+    from opal.report_privacy import Privacy
+    token = 'hf_' + 'Canary987' * 4
+    diagnostic = repr(token[:10]) + ' ' + quote + token[10:] + quote
+    assert token == __import__('ast').literal_eval(diagnostic)
+    cleaned = redact_secrets(diagnostic)
+    assert 'Canary' not in cleaned
+    assert __import__('ast').literal_eval(cleaned).replace('<hidden>', '') == ''
+    assert 'Canary' not in Privacy(tmp_path, {}).text(diagnostic)
+    code = "value = 'YWJjZGVm' 'Z2hpamtsbW5vcA=='"
+    assert redact_secrets(code) == code
+    ordinary = "'hf_hub_download' 'failed to download'"
+    assert redact_secrets(ordinary) == ordinary

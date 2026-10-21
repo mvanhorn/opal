@@ -5,7 +5,7 @@
 - Preserve Accelerate's public optimizer state, parameter groups and defaults through a checkpoint adapter.
 - Resolve conjugate and negative parameter views before DDP byte fingerprints.
 - Accept weights-only-safe updater values and preserve the starting updater exemption after analysis edits.
-- Redact credentials inside nested escaped JSON and exception reprs through the shared diagnostic filter.
+- Redact credentials inside nested escaped JSON, exception reprs and adjacent string fragments through the shared filter.
 - Restore legacy Accelerate raw optimizer checkpoints with one warning about missing OPAL programs and progress.
 - Preserve ordinary model names, identifiers, hashes, base64 code and credential-free URLs during redaction.
 - Bound noncontiguous parameter fingerprint copies by slicing before flattening.
