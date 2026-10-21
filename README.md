@@ -58,7 +58,7 @@ On an M1 Max CPU the first two take about 15 s each and print the same `paramete
 of the sha256 of the final parameters). Our agent run ended at 0.9863. It took 862 s, 532 s of which was waiting for
 the agent; the agent was asked 42 times, changed the program 6 times and cost $2.70.
 
-The test suite runs on CPU with no agent and no cost: `pip install -e ".[examples,test,hf]"`, then `pytest -q`. It
+The whole test suite runs on CPU with no agent and no cost: `pip install -e ".[examples,test,hf]"`, then `pytest -q`. It
 takes a few minutes on a laptop. Three tests are skipped unless you set `OPAL_REAL_CLI=1`; they start the real Claude
 Code CLI against a local mock.
 
