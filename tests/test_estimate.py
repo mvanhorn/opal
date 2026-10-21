@@ -3,8 +3,11 @@ decisions: with decisions not set, a blocking run keeps the expected waiting wit
 
 import json
 
+import pytest
+
 import opal
 from opal import cli, estimate
+from opal.backends.base import Backend
 from opal.schedule import decision_updates
 from test_claude_backend import claude_run, fake_cli
 from test_core import adamw, events, make, train
@@ -99,3 +102,53 @@ def test_capping_a_uniform_schedule_keeps_at_least_one_decision(tmp_path):
     train(m, w, data, 200, sched=s)
     requested = [e for e in events(tmp_path / "r") if e["kind"] == "requested"]
     assert len(w.schedule) == len(requested) == 1
+
+
+@pytest.mark.parametrize("every, sec_per_step, asked", [(10, 1.0, 4), (1, 1.0, 4), (1, 0.01, 3)])
+def test_the_cap_counts_early_decisions_and_excludes_their_waiting(tmp_path, monkeypatch, every, sec_per_step, asked):
+    import time
+    from opal.agent import AgentWorker
+
+    clock = [0.0]
+    original_wait = AgentWorker.wait
+
+    def timed_wait(worker):
+        clock[0] += 90.0
+        original_wait(worker)
+
+    monkeypatch.setattr(time, "perf_counter", lambda: clock[0])
+    monkeypatch.setattr(AgentWorker, "wait", timed_wait)
+    monkeypatch.setattr(estimate, "FIRST_SECONDS", (90.0, 90.0, 90.0))
+    monkeypatch.setattr(estimate, "LATER_SECONDS", (90.0, 90.0, 90.0))
+
+    class TimedBackend(Backend):
+        name = "claude"  # requests the first timing estimate, without a real CLI or model call
+
+        def decide(self, workspace, message, system, record_dir):
+            return dict(text="keep", cost_usd=0.0, returncode=0, error=None, seconds=90.0)
+
+    m, data = make()
+    o, s = adamw(m, 100)
+    w = opal.wrap(o, m, scheduler=s, total_steps=100, goal="g", every=every, backend=TimedBackend(),
+                  summarize=False, verbose=False, run_dir=tmp_path / "r")
+    before = list(w.schedule)
+    for i in range(100):
+        clock[0] += sec_per_step
+        train(m, w, data, i + 1, sched=s, start=i)
+    state = w.state_dict()
+    w.close()
+    ev = events(tmp_path / "r")
+    measured = next(e for e in ev if e["kind"] == "estimate")
+    assert measured["sec_per_update"] == sec_per_step
+    assert measured["capped_from"] == len(before)
+    requested = [e["update"] for e in ev if e["kind"] == "requested"]
+    assert len(requested) == asked and requested == w.schedule
+    assert w.max_decisions == 2 * len(w.schedule)
+    assert state["decision_schedule"] == w._schedule_segments
+    if every == 10:
+        assert w.schedule == decision_updates(100, 4, 10)  # normal first-check grid is unchanged
+    else:
+        assert requested[:3] == before[:3] == [1, 2, 3]
+        assert all(u >= measured["update"] for u in w.schedule[3:])
+    if sec_per_step == 1.0:
+        assert estimate.waiting(asked) <= 4 * 100 * sec_per_step < estimate.waiting(asked + 1)

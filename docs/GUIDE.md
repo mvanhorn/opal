@@ -130,6 +130,8 @@ account's e-mail address and whether its folder lies inside a git repository.
 
 ## Cost and limits
 
+With `max_cost_usd`, calls stop when the remainder is below the larger of $0.01 and the reported spend per decision asked so far.
+
 | Option | Default | Meaning |
 |---|---|---|
 | `decisions` | 50 | how many times the agent is asked over the run: chances to change the programs, not changes (at each it may keep everything as it is); a fifth in the first 5% of training, the rest spread evenly (fewer on short runs). Not set, a run whose training waits for the agent asks at most as many as keep the expected waiting within 4x its own training time (below) |

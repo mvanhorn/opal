@@ -71,6 +71,10 @@ FAKE_CLI = textwrap.dedent(
         sys.stdout.flush()
     emit(dict(type="system", subtype="init", session_id=s))
     mode = cfg.get("mode", "ok")
+    if mode == "budget" and float(val("--max-budget-usd") or "inf") < 0.25:
+        emit(dict(type="result", subtype="error_max_budget_usd", is_error=True,
+                  result=f"Reached maximum budget (${{val('--max-budget-usd')}})", total_cost_usd=0))
+        sys.exit(1)
     pidfile = cfg.get("pidfile")
     secs = float(cfg.get("seconds", 20))
     if mode == "apierror":
@@ -691,6 +695,23 @@ def test_reaching_max_cost_usd_is_said_once_on_stdout(tmp_path, capsys):
     assert [e["k"] for e in events(tmp_path / "r") if e["kind"] == "requested"] == [1, 2]
     out = capsys.readouterr().out
     assert out.count("max_cost_usd reached ($0.50 spent, cap $0.50)") == 1 and "no more agent calls" in out, out
+
+
+@pytest.mark.parametrize("cap, asked", [(0.001, 0), (0.251, 1), (0.49, 1), (0.5, 2), (0.75, 3)])
+def test_a_budget_too_small_for_another_call_stops_without_a_backend_failure(tmp_path, capsys, cap, asked):
+    exe = fake_cli(tmp_path, mode="budget")  # $0.25 per answer; rejects a smaller per-call budget
+    m, data, s, w = claude_run(tmp_path, exe, steps=120, decisions=4, max_cost_usd=cap, verbose=True)
+    train(m, w, data, 120, sched=s)
+    w.close()
+    ev = events(tmp_path / "r")
+    assert len(calls(tmp_path)) == asked
+    assert len([e for e in ev if e["kind"] == "requested"]) == asked
+    assert not any(e.get("failed") for e in ev)
+    captured = capsys.readouterr()
+    assert captured.out.count("max_cost_usd reached") == 1 and "no more agent calls" in captured.out
+    assert "backend failed" not in captured.err and "Reached maximum budget" not in captured.err
+    if cap in (0.001, 0.251, 0.49):
+        assert "remaining is below" in captured.out
 
 
 def test_each_decision_says_when_it_is_sent_and_what_became_of_it(tmp_path, capsys):

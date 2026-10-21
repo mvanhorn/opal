@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opal-optimizer"
-version = "0.3.3"
+version = "0.3.4"
 description = "A coding agent inside your training run, rewriting the optimizer while it trains"
 readme = "README.md"
 license = "MIT"

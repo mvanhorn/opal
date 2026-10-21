@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4 (2026-10-21)
+
+- Stop agent calls when the remaining cost budget is below the estimated call cost (#6).
+- Apply the default waiting cap to the remaining schedule after early decisions, excluding agent waits from training time (#4).
+
 ## 0.3.3 (2026-10-21)
 
 First public release.

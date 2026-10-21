@@ -919,7 +919,8 @@ class AgentOptimizer(
         self.update += 1
         u = self.update
         if self._estimate_due and self._t_mark is None and self._steps_here == 1:
-            self._t_mark = (u, time.perf_counter())  # the second update of this process: warm-up is behind
+            # The second update: warm-up is behind; agent waiting is not training time.
+            self._t_mark = (u, time.perf_counter() - self.agent_wait_seconds)
         self._steps_here += 1
         if u == self.total + 1:
             self._warn(
@@ -1129,15 +1130,23 @@ class AgentOptimizer(
         times its own training time by scheduling fewer decisions (at least one), in the same shape."""
         self._estimate_due, self._estimated = False, True
         since_u, since_t = self._t_mark
-        sps = max(1e-9, (time.perf_counter() - since_t) / (u - since_u))
+        sps = max(1e-9, (time.perf_counter() - self.agent_wait_seconds - since_t) / (u - since_u))
         blocking = "auto" if self._auto is not None else self.blocking
         max_lag = self._auto.max_lag if self._auto is not None else 50
         n, capped_from = len(self.schedule), None
-        if self._may_cap and self._sched_i == 0 and blocking is not False and n > 1:
+        if self._may_cap and blocking is not False and n > 1:
             k = estimate.capped_decisions(n, self.total * sps, blocking, sps, max_lag)
-            if k < n:
+            if k < n or self.worker.k > self._sched_i:
                 capped_from = n
-                segments = decision_schedule.decision_segments(self.total, k, self.default_every, self._schedule_kind)
+                if self._sched_i or self.worker.k:
+                    # Keep consumed checks; thin only the rest, counting calls already asked (including wake-ups).
+                    remaining = self.schedule[self._sched_i :]
+                    left = min(len(remaining), max(0, k - self.worker.k))
+                    keep = set(self.schedule[: self._sched_i])
+                    keep.update(remaining[i * len(remaining) // left] for i in range(left))
+                    segments = [[x for x in seg if x in keep] for seg in self._schedule_segments]
+                else:
+                    segments = decision_schedule.decision_segments(self.total, k, self.default_every, self._schedule_kind)
                 # A one-decision uniform grid lands at the excluded final update. Keep a usable original check.
                 self._set_schedule(segments if any(segments) else [self.schedule[:1]])
         be = self.worker.backend
@@ -1241,13 +1250,18 @@ class AgentOptimizer(
         return not self._cost_reached()
 
     def _cost_reached(self):
-        """True once max_cost_usd is spent; says so on stdout the first time."""
-        if self.max_cost is None or self.worker.cost < self.max_cost:
+        """True once max_cost_usd cannot cover another estimated call; says so on stdout the first time."""
+        if self.max_cost is None:
+            return False
+        left = self.max_cost - self.worker.cost
+        needed = max(0.01, self.worker.cost / max(1, self.worker.k))
+        if left >= needed:
             return False
         if not self._cost_said:
             self._cost_said = True
+            why = f", ${left:.3g} remaining is below the ${needed:.3g} call estimate" if left > 0 else ""
             self._notice(
-                f"max_cost_usd reached (${self.worker.cost:.2f} spent, cap ${self.max_cost:.2f}); training continues "
+                f"max_cost_usd reached (${self.worker.cost:.2f} spent, cap ${self.max_cost:.2f}{why}); training continues "
                 "with the current programs, no more agent calls."
             )
         return True
