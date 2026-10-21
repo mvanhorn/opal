@@ -107,7 +107,7 @@ Trainer: [Try it without an agent](docs/GUIDE.md#try-it-without-an-agent).
 
 ## Results
 
-One run per setting, each agent starting from the task's own recipe:
+Each number is one run, and each agent started from the task's own recipe:
 
 | Example | Measure | Official recipe | Reactive optimizer |
 |---|---|---|---|

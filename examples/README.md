@@ -4,9 +4,9 @@ Everything we ran with OPAL, with the numbers. Each large example has its own fo
 commit, the lines that wrap the optimizer, the commands for both runs, the hardware, time and cost, and where each
 number comes from.
 
-## Reproduce our results
+## Results by setting
 
-We ran each setting once, and each agent started from the task's own recipe. The "Reactive optimizer" column comes
+Each number is one run, and each agent started from the task's own recipe. The "Reactive optimizer" column comes
 from the harness this package grew out of (for modded-nanogpt, from OPAL 0.1.0). The last column is a rerun on OPAL
 0.3 with the neutral prompt and Opus 5.5 at effort high. In all of these runs, training paused at each decision while
 the agent answered, which is OPAL's default.
