@@ -1,19 +1,18 @@
 # modded-nanogpt optimization track, record #36 (162M GPT)
 
-The optimization track of modded-nanogpt: a 162M-parameter GPT (12 layers, width 768) trained from scratch on FineWeb
-(GPT-2 tokens) for 3,250 updates of 524,288 tokens, judged by the validation loss after the last update. The starting
-recipe is record #36, the track's tuned baseline: Muon on the blocks' matrices and AdamW on the rest, a stable-then-decay
-learning rate.
+The modded-nanogpt optimization track trains a 162M-parameter GPT from scratch on FineWeb with GPT-2 tokens.
+It has 12 layers and width 768. Training runs for 3,250 updates of 524,288 tokens.
+The score is validation loss after the last update. We start from record #36, the track's tuned baseline:
+Muon on the blocks' matrices, AdamW on the rest, and a stable-then-decay learning rate.
 
 | Validation loss ↓ (one run each, 8× H100) | Record #36 (our run) | Reactive optimizer |
 |---|---|---|
 | after 3,250 updates | 3.2781 | **3.2749** |
 
-**A small effect.** The gap is 0.0032. The track's own rules assume a run-to-run standard deviation of 0.0013 per run,
-so this is about 2.5 of those from one run on each side; record #36's published mean over ten runs is 3.2787 (row 36
-of the record table in the
-[track README on master](https://github.com/KellerJordan/modded-nanogpt/blob/master/records/track_3_optimization/README.md);
-the README at the pinned commit below predates that row and lists only records 1 to 12).
+The gap is small: 0.0032. The track's rules assume a run-to-run standard deviation of 0.0013.
+The gap is about 2.5 times that, from one run on each side. Record #36's published mean over ten runs is 3.2787.
+It appears in row 36 of the [track README on master](https://github.com/KellerJordan/modded-nanogpt/blob/master/records/track_3_optimization/README.md).
+The README at the pinned commit below predates that row and lists only records 1 to 12.
 
 **Not rerun on OPAL 0.3 yet.** The 3.2749 run used OPAL 0.1.0 with that version's default prompt, which this release
 no longer ships: Claude Code (Opus 5.5, effort `high`), 100 decisions requested with checks every 10 updates (97 after
@@ -22,9 +21,10 @@ spaced decisions, 2 GPUs, a goal worded as reaching the target loss) ended at **
 
 ## Other settings, on OPAL 0.3.x
 
-The same script in settings with no recipe tuned for them, one agent run each (Opus 5.5, effort `high`, neutral prompt,
-training paused at each decision), each starting from a record's recipe as it is. Validation loss after the last
-update, raw weights.
+We also ran the same script in settings with no recipe tuned for them.
+Each started from a record's recipe as it is, with one agent run, Opus 5.5 at effort `high` and the neutral prompt.
+Each used 50 uniformly spaced decisions and paused training at every decision.
+The scores are validation loss after the last update, using raw weights.
 
 | Setting | Start | Start's result | Reactive optimizer |
 |---|---|---|---|
@@ -45,13 +45,15 @@ file.
 
 ## Wiring it to OPAL
 
-[`opal.patch`](opal.patch) changes that file in five places, all behind `OPAL=1`: it turns the script's
-`set_hparams` schedule into `LambdaLR` schedulers with the same values (which the starting program follows and the agent
-can take over), wraps both optimizers with `opal.wrap`, passes each update's mean token loss to `step`, records the
-validation loss in OPAL's report (the agent does not see it) and closes the run at the end. Without `OPAL=1` the
-script trains as upstream does. The patch applies cleanly to that commit and the patched file compiles; that the
-`LambdaLR` schedulers reproduce `set_hparams` bit for bit under `backend="keep"` was checked on CPU with a small model
-(SGD standing in for Muon). It has not been run on GPUs.
+[`opal.patch`](opal.patch) changes the file in five places, all behind `OPAL=1`.
+It writes `set_hparams` as `LambdaLR` schedulers with the same values, which the starting program follows and the agent
+can take over. It wraps both optimizers with `opal.wrap`, passes each update's mean token loss to `step`, records
+validation loss in the report without showing it to the agent, and closes the run at the end.
+Without `OPAL=1`, the script trains as upstream does.
+
+The patch applies to that commit and the patched file compiles.
+On CPU, its `LambdaLR` schedulers matched `set_hparams` byte for byte with `backend="keep"`, a small model and SGD in
+place of Muon. The patch has CPU checks only.
 
 ```bash
 git clone https://github.com/KellerJordan/modded-nanogpt && cd modded-nanogpt
@@ -69,7 +71,7 @@ OPAL=1 OPAL_DECISIONS=100 OPAL_EVERY=10 OPAL_MAX_COST_USD=20 \
 ```
 
 Each line prints `val_loss` as it trains; the last one is the score. Claude Code must be installed and logged in on the
-machine that runs rank 0. The run's records land in `opal_runs/<time>-...` in the working directory.
+machine that runs rank 0. The run's records go in `opal_runs/<time>-...` in the working directory.
 
 ## Our runs
 
@@ -80,7 +82,8 @@ machine that runs rank 0. The run's records land in `opal_runs/<time>-...` in th
 | Agent cost | – | $8.90 |
 | Validation loss | 3.2781 | 3.2749 |
 
-- **Code.** Our script was this file with the same schedule written as `LambdaLR`, the same OPAL wrap, a seed, our
-  logging, and scenario hooks that were off in these runs.
-- **What the agent changed.** A Muon momentum warmup from 0.85 to 0.95 over the first 300 updates, a technique from
-  earlier modded-nanogpt records, at its first decision; a clip of outlier updates, which fired once.
+Our script used this file with the same schedule written as `LambdaLR`, the same OPAL wrap, a seed and our logging.
+Its scenario hooks were off in these runs.
+
+At its first decision, the agent added a Muon momentum warmup from 0.85 to 0.95 over the first 300 updates.
+This technique comes from earlier modded-nanogpt records. It also added outlier-update clipping, which fired once.
