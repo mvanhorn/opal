@@ -105,7 +105,7 @@ class LRController:
             self.mult[key] = lr_rule(self.signal[key], self.mult[key], update, total)
             # Interpolate from the saved weights: subtracting the update back can lose
             # their low bits even at multiplier zero. lerp preserves both endpoints.
-            torch._foreach_lerp_(old, params, self.mult[key].to(params[0].dtype))
+            torch._foreach_lerp_(old, params, [self.mult[key].to(params[0].dtype)] * len(old))
             torch._foreach_copy_(params, old)
 
     def state_dict(self):

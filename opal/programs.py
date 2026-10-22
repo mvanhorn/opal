@@ -16,6 +16,7 @@ from collections import Counter, OrderedDict
 from pathlib import Path
 
 import torch
+import numpy as np
 
 PROGRAM_FILES = ("updater.py", "analysis.py")
 DATA_FILES = ()  # files besides modules that count as program files (the updater side): none since knobs mode went
@@ -153,6 +154,51 @@ def forget(tag: str) -> None:
     prefix = f"opal_program_{tag}."
     for name in [n for n in sys.modules if n.startswith(prefix)]:
         del sys.modules[name]
+
+
+def normalize_state(obj):
+    """Copy plain containers, converting NumPy numbers/arrays before the safe-state check.
+
+    Inspect only exact builtin/library types: rejected objects and serialization hooks are never called.
+    Leave cycles and unsupported values for unpicklable() to reject.
+    """
+    memo = {}
+
+    def convert(value, depth=0):
+        kind = type(value)
+        if depth > 100:
+            return value
+        for base, cast in ((np.integer, int), (np.floating, float), (np.complexfloating, complex), (np.bool_, bool)):
+            if any(kind is t for t in np.sctypeDict.values()) and issubclass(kind, base):
+                return cast(value)
+        if kind is np.ndarray:
+            try:
+                return torch.from_numpy(value.copy())
+            except (TypeError, ValueError):
+                return value  # e.g. object/string arrays: reject through the same allowlist
+        if id(value) in memo:
+            return memo[id(value)]
+        if any(kind is t for t in (dict, OrderedDict, Counter)):
+            out = kind()
+            memo[id(value)] = out
+            for key, item in dict.items(value):
+                out[convert(key, depth + 1)] = convert(item, depth + 1)
+            if kind is not dict:
+                vars(out).update(convert(vars(value), depth + 1))
+            return out
+        if kind is list:
+            out = []
+            memo[id(value)] = out
+            out.extend(convert(item, depth + 1) for item in value)
+            return out
+        if any(kind is t for t in (tuple, set, frozenset)):
+            memo[id(value)] = value
+            out = kind(convert(item, depth + 1) for item in value)
+            memo[id(value)] = out
+            return out
+        return value
+
+    return convert(obj)
 
 
 def unpicklable(obj) -> list:

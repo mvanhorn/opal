@@ -58,7 +58,10 @@ class CheckpointMixin:
             )
             last = tb.strip().splitlines()[-1]
             self._warn("state-raised", f"the updater's state_dict() raised ({last}); checkpoints leave it out")
+            self._state_dropped("updater", last)
         else:
+            if self.digests[0] != self._starting_digest:
+                up = programs.normalize_state(up)
             bad = programs.unpicklable(up) if self.digests[0] != self._starting_digest else []
         if bad:
             msg = "the updater's state_dict() holds objects a new process could not load (" + "; ".join(bad) + ")"
@@ -70,6 +73,7 @@ class CheckpointMixin:
                 )
             )
             self._warn("state-nonplain", msg + "; checkpoints leave it out")
+            self._state_dropped("updater", msg)
             up = None
         mem = io.BytesIO()
         try:
@@ -85,13 +89,15 @@ class CheckpointMixin:
                 )
             )
             self._warn("memory-pickle", f"analysis memory could not be pickled ({exc}); checkpoints leave it out")
+            self._state_dropped("memory", str(exc))
+        observations = self._observation_state()
         try:
             event_offset = (self.run.dir / "events.jsonl").stat().st_size if self.run is not None else None
         except OSError:
             event_offset = None
         return dict(
             opal=1,
-            observations=self._observation_state(),
+            observations=observations,
             update=self.update,
             version=self.version,
             files=self.files,
@@ -127,7 +133,20 @@ class CheckpointMixin:
         if torch.is_tensor(self._observed_loss):
             values["_observed_loss"] = self._observed_loss.detach().clone()
         values["loss_buffer"] = self._loss_buf[:self._loss_n].detach().clone()
+        defaults = dict(_empty_observations(self.update), loss_buffer=None)
+        for name, value in values.items():
+            value = programs.normalize_state(value)
+            bad = programs.unpicklable(value)
+            if bad:
+                self._state_dropped("observations." + name, "; ".join(bad))
+                value = defaults[name]
+            values[name] = value
         return copy.deepcopy(values)
+
+    def _state_dropped(self, field, reason):
+        if self.run is not None:
+            self.run.event("state_dropped", update=self.update, version=self.version, field=field, reason=reason)
+            self._live.refresh()
 
     def _continue_run_dir(self, old):
         """On resume, keep writing into the checkpoint's run folder when this run's folder was auto-named and that folder

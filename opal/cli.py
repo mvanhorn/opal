@@ -93,6 +93,8 @@ def _show(run):
 def doctor_mailbox(spec):
     """A mailbox setup: no Claude Code here; the folder must be usable, and a broker should be serving it."""
     import json
+    import shutil
+    import subprocess
     import time
     import uuid
 
@@ -100,6 +102,20 @@ def doctor_mailbox(spec):
 
     box = Path(spec.split(":", 1)[1]).expanduser()
     print(f"mailbox {box}: the agent runs on the broker's machine; no Claude Code is needed here")
+    python = shutil.which("python3")
+    if python is None:
+        print("the mailbox host needs python3 (Python 3.6+) on its non-interactive SSH PATH; install it or fix PATH")
+        return 1
+    try:
+        probe = subprocess.run([python, "-c", "import sys; sys.exit(sys.version_info < (3, 6))"],
+                               capture_output=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"the mailbox host's python3 could not run: {exc}")
+        return 1
+    if probe.returncode:
+        print("the mailbox host needs python3 version 3.6 or newer on its non-interactive SSH PATH")
+        return 1
+    print("the mailbox host's python3: Python 3.6+ available (also required on the broker's SSH PATH)")
     try:
         box.mkdir(mode=0o700, parents=True, exist_ok=True)
         probe = box / f".doctor-{uuid.uuid4().hex[:8]}"

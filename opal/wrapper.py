@@ -19,6 +19,7 @@ import copy
 import datetime
 import json
 import math
+import numpy as np
 import shutil
 import sys
 import tempfile
@@ -735,7 +736,7 @@ class AgentOptimizer(
                     for method in methods:
                         if not callable(getattr(up, method, None)):
                             raise TypeError(f"build() must return an updater with a callable {method} method")
-                    bad = programs.unpicklable(up.state_dict()) if not (starting or restoring) else []
+                    bad = programs.unpicklable(programs.normalize_state(up.state_dict())) if not (starting or restoring) else []
                 if bad:
                     raise TypeError(
                         "state_dict() must contain tensors and weights-only-safe values in acyclic containers, "
@@ -1466,8 +1467,8 @@ class AgentOptimizer(
                     self._warn(f"log-{k}", f"opt.log: {k} has {v.numel()} elements; only scalars are kept")
                     continue
                 rec[k] = v.detach()
-            elif isinstance(v, (int, float)) and not isinstance(v, bool):
-                rec[k] = v
+            elif isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, bool):
+                rec[k] = int(v) if isinstance(v, (int, np.integer)) else float(v)
             else:
                 self._warn(f"log-{k}", f"opt.log: {k} is {type(v).__name__}; only numbers are kept")
         if len(rec) == 1:

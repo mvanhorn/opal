@@ -137,9 +137,17 @@ def test_stale_claim_has_one_winner_in_two_processes(tmp_path, same_broker):
         for process in processes:
             process.join(30)
             assert process.exitcode == 0
-        assert sum(row[0] for row in rows) == 1
-        assert any('backing off' in line for row in rows if not row[0] for line in row[1])
-        winner = next(row[2]['claim-0001.json'] for row in rows if row[0])
+        if same_broker:
+            # A restart using the same stable id may replace a live generation immediately.
+            assert all(row[0] for row in rows)
+        else:
+            assert sum(row[0] for row in rows) == 1
+            assert any('backing off' in line for row in rows if not row[0] for line in row[1])
+        winner = json.loads(box.read('claim-0001.json'))
+        for won, _, held in rows:
+            if won and held['claim-0001.json']['generation'] != winner['generation']:
+                assert not box.lease('claim-0001.json', 'answer', body={'stale': True},
+                                     expected=held['claim-0001.json'])
         assert not box.lease('claim-0001.json', 'renew', expected=old)
         assert not box.lease('claim-0001.json', 'release', expected=old)
         assert not box.lease('claim-0001.json', 'answer', body={'stale': True}, expected=old)

@@ -840,7 +840,7 @@ def write_report(run) -> Path:
         facts += _fact(en, zh, value)
     facts += "</dl>" + defaults_flag(events) + integrity_flag(events) + boundary_flag(events)
     notable = [
-        e for e in events if e.get("kind") in ("resumed", "interrupted", "reverted", "crashed", "rank_divergence", "ranks_resynced")
+        e for e in events if e.get("kind") in ("resumed", "interrupted", "reverted", "crashed", "rank_divergence", "ranks_resynced", "state_dropped")
     ]
     if notable:
         facts += "<pre>" + html.escape(json.dumps(notable, indent=2, ensure_ascii=False)) + "</pre>"

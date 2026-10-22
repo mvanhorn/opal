@@ -2,6 +2,15 @@
 
 ## 0.3.5 (2026-10-21)
 
+- Normalize logged NumPy metrics and allowlist checkpoint observations for safe plain and Accelerate resumes (B1).
+- Send SSH lease arguments and large answers over stdin; failed answer retries no longer block new requests (B2).
+- Clear and release claims after SSH failures; let a restarted broker reclaim its own lease with generation fencing (B3).
+- Keep the remote lease helper compatible with Python 3.6+ and check python3 availability in mailbox doctor (B4).
+- Reclaim the same broker's lease immediately after restart instead of waiting for the stale timeout (F1).
+- Log mailbox lease backoff once per request (F2).
+- Keep aggressive LR interpolation on-device with tensor-list weights and exact zero/one endpoints (F3).
+- Normalize NumPy updater state and record every dropped checkpoint field in events and HTML, including quiet runs (F4).
+
 - Check updater state with a closed allowlist without invoking custom serialization hooks.
 - Redact form-encoded bearers, access tokens, triple-quoted, adjacent and bytes literals in diagnostics.
 - Serialize mailbox lease takeovers and fence stale renewals, releases and responses by generation (#1).

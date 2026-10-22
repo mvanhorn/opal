@@ -427,10 +427,14 @@ def _lease_file(path, action, body, expected, stale):
                     stream.write(json.dumps(value).encode())
                 os.replace(tmp, target)
             finally:
-                tmp.unlink(missing_ok=True)
+                try:
+                    tmp.unlink()
+                except FileNotFoundError:
+                    pass
 
         if action == "claim":
-            if old and old.get("attempt") == body["attempt"] and time.time() - float(old.get("t", 0)) < stale:
+            if (old and old.get("attempt") == body["attempt"] and old.get("broker") != body["broker"]
+                    and time.time() - float(old.get("t", 0)) < stale):
                 return False
             write(path, body)
             return dict(previous=old)
@@ -439,10 +443,16 @@ def _lease_file(path, action, body, expected, stale):
         if action == "renew":
             write(path, dict(old, t=time.time()))
         elif action == "release":
-            path.unlink(missing_ok=True)
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
         elif action == "answer":
             write(path.with_name(path.name.replace("claim-", "response-", 1)), body)
-            path.unlink(missing_ok=True)
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
         else:
             raise ValueError("unknown lease action")
         return True
@@ -536,9 +546,9 @@ class _Folder:
         if not self.ssh:
             return _lease_file(self._local(name), action, body, expected, CLAIM_STALE)
         # Python is already required on the training host. No remote OPAL install is needed.
-        script = inspect.getsource(_lease_file) + "\nimport json, sys\nprint(json.dumps(_lease_file(*json.loads(sys.argv[1]))))"
+        script = inspect.getsource(_lease_file) + "\nimport json, sys\nprint(json.dumps(_lease_file(*json.load(sys.stdin))))"
         args = json.dumps([f"{self.path}/{name}", action, body, expected, CLAIM_STALE])
-        p = self._sh("python3 -c " + shlex.quote(script) + " " + shlex.quote(args))
+        p = self._sh("python3 -c " + shlex.quote(script), args.encode())
         if p.returncode != 0:
             raise RuntimeError(f"ssh lease failed ({p.returncode}): {p.stderr.decode()[-300:]}")
         return json.loads(p.stdout)
@@ -704,7 +714,8 @@ def _claim(folder, k, attempt, me, log):
         old = won["previous"]
         if old:
             log(f"broker: taking over request {k} from broker {old.get('broker')}, which stopped answering")
-    else:
+    elif (k, attempt) != getattr(folder, "_backed_off", None):
+        folder._backed_off = (k, attempt)
         log(f"broker: request {k} lease belongs to another broker; backing off")
     return bool(won)
 
@@ -819,13 +830,16 @@ def _serve(root, backend, workdir, ssh, poll, run, log, beat_state, keep_serving
     failures, failing_since = 0, None
     unsent = None  # (k, attempt, response bytes) of an answer whose write to the mailbox failed
     while True:
-        try:
-            if unsent is not None:
+        if unsent is not None:
+            try:
                 if not folder.lease(f"claim-{unsent[0]:04d}.json", "answer", body=_json(unsent[2]), expected=unsent[3]):
                     log(f"broker: request {unsent[0]} lease was lost; discarded the late answer")
                 else:
                     log(f"broker: wrote the answer to request {unsent[0]} after a failed write")
                 unsent = None
+            except (RuntimeError, OSError, ValueError, KeyError, subprocess.TimeoutExpired) as exc:
+                log(f"broker: could not retry the answer to request {unsent[0]} ({exc}); still checking new requests")
+        try:
             pending = _pending(folder)
             done = folder.read("done")
         except (RuntimeError, OSError, ValueError, KeyError, subprocess.TimeoutExpired) as exc:
@@ -858,9 +872,19 @@ def _serve(root, backend, workdir, ssh, poll, run, log, beat_state, keep_serving
         if done is not None and _json(done).get("attempt") == attempt:
             log("broker: run finished")
             return None
+        if unsent is not None and (k, attempt) == unsent[:2]:
+            time.sleep(poll)
+            continue
         try:
             answered = _answer_request(folder, backend, work, ws, run, k, attempt, fresh, beat_state, log)
         except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
+            claim = beat_state.get("claim")
+            beat_state["claim"] = None
+            if claim is not None:
+                try:
+                    folder.lease(PurePosixPath(claim[0]).name, "release", expected=claim[1])
+                except (RuntimeError, OSError, subprocess.TimeoutExpired):
+                    pass
             log(f"broker: request {k}: the mailbox failed ({exc}); trying again")
             time.sleep(RETRY_SECONDS)
             continue
@@ -913,10 +937,11 @@ def _answer_request(folder, backend, work, ws, run, k, attempt, fresh, beat_stat
             log(f"broker: request {k} is being answered by another broker")
         return None
     held = folder._held[f"claim-{k:04d}.json"]
+    beat_state["claim"] = (f"{run}/claim-{k:04d}.json", held)
     if _json(folder.read(f"response-{k:04d}.json")).get("attempt") == attempt:
         folder.lease(f"claim-{k:04d}.json", "release", expected=held)  # another broker answered it and let go of its claim before ours
+        beat_state["claim"] = None
         return None
-    beat_state["claim"] = (f"{run}/claim-{k:04d}.json", held)
     folder.remove(f"unavailable-{k:04d}.json")  # left by a broker that stopped while its agent was unavailable
     req["absent"] = _json(folder.read(f"absent-{k:04d}.json")).get("seconds", 0.0)  # the run had no broker this long
     _sync_workspace(folder, ws, req, log)
@@ -932,6 +957,7 @@ def _answer_request(folder, backend, work, ws, run, k, attempt, fresh, beat_stat
         backend.timeout = timeout
     message = _limit_note(req, timeout) + message  # stopped earlier than the run said: the agent is told
     if not folder.lease(f"claim-{k:04d}.json", "renew", expected=held):
+        beat_state["claim"] = None
         log(f"broker: request {k} lease was lost before starting the agent; backing off")
         return None
     (rec / "message.txt").write_text(message)
