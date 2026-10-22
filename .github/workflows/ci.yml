@@ -52,7 +52,26 @@ jobs:
         id: install
         run: python -m pip install '.[examples,test,hf]' accelerate
       - name: Full CPU suite
-        run: pytest -v -ra --durations=20 -o faulthandler_timeout=120 --junitxml=pytest-results.xml
+        shell: python
+        run: |
+          import os
+          import subprocess
+          import xml.etree.ElementTree as ET
+
+          common = ['pytest', '-v', '-ra', '--durations=20', '-o', 'faulthandler_timeout=120']
+          if os.environ['RUNNER_OS'] == 'macOS':
+              # Persistent mailbox brokers leave daemon threads alive. Keep them in a
+              # separate process from subsequent native DDP startup on macOS.
+              mailbox = 'tests/test_mailbox_backend.py'
+              subprocess.run(common + ['--ignore=' + mailbox, '--junitxml=pytest-rest.xml'], check=True)
+              subprocess.run(common + [mailbox, '--junitxml=pytest-mailbox.xml'], check=True)
+              merged = ET.Element('testsuites')
+              for path in ['pytest-rest.xml', 'pytest-mailbox.xml']:
+                  for suite in ET.parse(path).getroot():
+                      merged.append(suite)
+              ET.ElementTree(merged).write('pytest-results.xml', encoding='utf-8', xml_declaration=True)
+          else:
+              subprocess.run(common + ['--junitxml=pytest-results.xml'], check=True)
       - name: MNIST plain and keep must match byte for byte
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: python
