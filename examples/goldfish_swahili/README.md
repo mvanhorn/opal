@@ -10,16 +10,12 @@ split at the middle character. This follows upstream's `eval_code/flores_eval_go
 
 | FLORES-200 bits ↓ (one run each) | Official recipe | Reactive optimizer |
 |---|---|---|
-| after the last update | 79.37 | **77.60** |
+| after the last update | 79.37 | **77.25** |
 
-In this run the agent ended 1.77 bits below the official recipe.
+In this run the agent ended 2.12 bits below the official recipe.
 
-On OPAL 0.3, the rerun scored 77.25: one run, neutral prompt, 51 decisions of which 11 changed the program,
+The agent run used OPAL 0.3 with the neutral prompt: 51 decisions of which 11 changed the program,
 $17.41, 5 h 39 min on one H100. This wall time includes evaluations and waiting for the agent.
-
-The table above comes from the earlier training system OPAL grew from in October 2026.
-It used Claude Code, Opus 5.5 at effort `high`, with that system's neutral prompt and 100 decisions every 793 updates.
-Training paused at each decision.
 
 ## Official code and data
 
@@ -73,9 +69,9 @@ Then run it once with `backend="keep"` for a few hundred updates: its losses mus
 | | Official recipe | Reactive optimizer |
 |---|---|---|
 | Hardware | 1× H100 80GB | 1× H100 80GB |
-| Reported run time, including agent waits | 4.8 h | 5.75 h, of which 0.77 h waiting for the agent |
-| Agent cost | – | $17.79 |
-| Decisions answered / that changed code | – | 100 / 4 (decisions 1, 2, 9 and 11) |
-| FLORES-200 bits | 79.374 | 77.600 |
+| Reported run time, including agent waits | 4.8 h | 5.65 h, of which 0.67 h waiting for the agent |
+| Agent cost | – | $17.41 |
+| Decisions answered / that changed code | – | 51 / 11 |
+| FLORES-200 bits | 79.374 | 77.250 |
 
-The official 4.8 h sums logged update windows, including evaluations. The agent time includes its 0.77 h wait.
+The official 4.8 h sums logged update windows, including evaluations. The agent time includes its 0.67 h wait.

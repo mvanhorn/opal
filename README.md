@@ -121,15 +121,23 @@ Each number is one run, and each agent started from the task's own recipe:
 | Example | Measure | Official recipe | Reactive optimizer |
 |---|---|---|---|
 | SiT-B/2, ImageNet 256, 400K updates | FID-50K ↓ | 35.7 (our evaluator) | 23.6 |
-| RAEv2-B, ImageNet 256, 20 epochs | FID-50K ↓ | 3.39 | 3.10 (prompt asked for efficiency), 3.46 (neutral prompt); rerun on OPAL 0.3: 3.19 |
-| Goldfish 125M GPT, Swahili | FLORES-200 bits ↓ | 79.37 | 77.60; rerun on OPAL 0.3: 77.25 |
+| RAEv2-B, ImageNet 256, 20 epochs | FID-50K ↓ | 3.39 | 3.19 |
+| Goldfish 125M GPT, Swahili | FLORES-200 bits ↓ | 79.37 | 77.25 |
 | modded-nanogpt record #36 | validation loss ↓ | 3.2781 | 3.2749 |
-| LightningDiT-B/1, ImageNet 256, 160 epochs | FID-50K ↓ (with guidance) | 3.22 | rerun on OPAL 0.3: 2.31 |
+| LightningDiT-B/1, ImageNet 256, 160 epochs | FID-50K ↓ (with guidance) | 3.22 | 2.31 |
 
 It does not always help: a run of modded-nanogpt on OPAL 0.2.0 ended at 3.2878, worse than record #36. Your
 numbers may also differ from ours, because the agent can choose differently from one run to the next. The
 [examples page](https://github.com/xingjian-bai/opal/blob/main/examples/README.md) has every number with its version, hardware, time and cost, the small CPU and
 one-GPU scripts, and how to rerun each setting.
+
+**Long runs suit it best.** An agent decision takes about the same time in any run, about 40 s on average in ours,
+so the waiting adds up to a roughly fixed cost. In our runs of several hours it came to 0.49 h of 3.75 h on RAEv2-B,
+0.67 h of 5.65 h on Goldfish and 1.05 h of 11.2 h on SiT-B/2. In short runs it dominates: our one-GPU scripts, which
+set 50 decisions, took 27 to 31 min with the agent against 1 to 3 min without, and with `blocking=False` they ended
+before the first answer arrived. The small scripts are a quick way to try OPAL. If you have the compute, use it on runs
+of a few hours or more, where `blocking=False` also
+[kept the result](https://github.com/xingjian-bai/opal/blob/main/examples/README.md#training-without-waiting-for-the-agent).
 
 Our run records and final weights are on Hugging Face: [snow-leopard/opal-results](https://huggingface.co/datasets/snow-leopard/opal-results).
 
@@ -151,8 +159,8 @@ Our run records and final weights are on Hugging Face: [snow-leopard/opal-result
   steps. If it raises an error, the run goes back to the previous program. A failure at its first step is undone
   exactly when a copy of the parameters and optimizer state fits in `snapshot_limit_gb` (default 2); a later failure
   is not undone, and the agent is told. Every version is kept in `programs/`.
-- **Training waits for the agent by default.** With `blocking=False` training keeps going while the agent thinks, and
-  `"auto"` waits only when an edit would land too late. Both are faster, and noisier.
+- **Training waits for the agent by default.** With `blocking=False` training keeps going while the agent thinks. That is
+  faster, and noisier.
 - **What the agent sees.** Your goal sentence, the names and shapes of the parameters, the training losses, its own
   analysis reports, and read-only copies of your training script and model code (`share_code=False` keeps them out).
   Values you log are only recorded, unless you pass `show_agent=True`. With `validation=N` it also sees the
@@ -164,7 +172,7 @@ Our run records and final weights are on Hugging Face: [snow-leopard/opal-result
 |---|---|---|
 | `decisions` | see right | How many times the agent is asked. Each time it may also keep everything as it is. If you do not set it, a run that waits for the agent asks at most as many times as keep the waiting under 4× the run's own training time (`opal estimate` shows the number), and at most 50, but at least once, even when one decision already waits longer than that. If you set it, that cap is off. A fifth of the decisions fall in the first 5% of the run; `schedule="uniform"` spaces them evenly. More in the [guide](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md#cost-and-limits). |
 | `every` | 50 | Steps between checks: losses are read, a non-finite loss is caught, the analysis program runs. |
-| `blocking` | `True` | `False` or `"auto"` to keep training while the agent thinks. |
+| `blocking` | `True` | `False` to keep training while the agent thinks. |
 | `max_cost_usd` | none | Stop asking the agent once it has spent this much. |
 | `backend_options` | `{}` | `model=` (default `claude-opus-5-5`), `effort=` (default `high`) and `timeout=`. A failed agent turn is retried with growing pauses; an agent that is unavailable (login, usage limit, outage) is waited for, with no deadline unless you set `unavailable_timeout=`. Details in the [guide](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md#cost-and-limits). |
 | `prompt` | `"neutral"` | The agent's instructions: the facts of the run and the protocol, with no recommended values. `"aggressive"` adds a review of every group's hyperparameters at each decision. You can also pass the path of your own template. |

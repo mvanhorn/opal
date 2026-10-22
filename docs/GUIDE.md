@@ -32,9 +32,8 @@ The picture shows `blocking=False`. With the default `blocking=True`, every rank
 - A new program takes over at the next update boundary. On one GPU this happens at once. In DDP, rank 0 announces
   it through an asynchronous broadcast every `sync_every` updates on a separate gloo group. The default is 20.
   Every rank swaps at the same update.
-- With `blocking=True`, all ranks wait at every decision, as in our published runs. With `blocking="auto"`, they wait
-  at decisions whose answers would arrive late, as described below. With `blocking=False`, they wait only once when
-  the loss turns non-finite. Waiting uses the gloo group, so a long agent turn does not trip an NCCL timeout.
+- With `blocking=True`, all ranks wait at every decision, as in most of our published runs. With `blocking=False`, they wait
+  only once when the loss turns non-finite. Waiting uses the gloo group, so a long agent turn does not trip an NCCL timeout.
 - A new updater runs on trial for `trial_steps` updates, by default 20. If it raises on any rank, every rank returns
   to the previous updater. The fallback is the last updater that passed its trial, or the starting one.
   An updater replaced during its trial does not become the fallback.
@@ -252,8 +251,7 @@ asked so far.
 | `max_cost_usd` | none | Stop asking once Claude Code reports this spend. Checked before each decision. The Claude backend also caps each decision at the remainder with `--max-budget-usd`, which can overshoot by one model call. `backend_options=dict(max_budget_usd=...)` caps each decision. |
 | `every` | 50 | Updates between checks. Decisions and the non-finite check happen at checks. |
 | `backend_options` | `{}` | `model=` defaults to `claude-opus-5-5`, `effort=` to `high`, as in the blog's runs. Another model or effort prints a warning at the start that the blog's results may differ. `timeout=` is seconds per decision, default 3600. `shell_timeout=` is seconds per agent shell command. `max_budget_usd=` caps each decision through Claude Code's `--max-budget-usd`. It can overshoot by one model call. `retries=` retries a failed turn, such as a tool crash, from the programs it started with. Pauses start at `backoff=15` s and double up to `backoff_max=600` s while `timeout` allows. `None`, the default, retries as often as that allows. `0` never retries. Each failure's error goes to the run's log, `decisions/NNN/attempts.jsonl` and the broker's log. The broker flag is `opal broker --retries N`. An unavailable agent has a separate wait, described below. `unavailable_timeout=` sets its deadline. |
-| `blocking` | True | Training waits for each decision, as in our published runs. False keeps training. "auto" waits at the first decision and when an answer would arrive more than `max_lag_updates` updates late. |
-| `max_lag_updates` | 50 | With `blocking="auto"`, the predicted lag in updates above which training waits. |
+| `blocking` | True | Training waits for each decision, as in most of our published runs. False keeps training. |
 | `share_code` | True | False keeps the training script and source files out of the agent's folder. |
 | `schedule` | "front" | When decisions are asked. The learning-rate schedule is `scheduler`. "front" puts a fifth evenly over the first 5% of training and the rest evenly over the remainder. "uniform" asks every total_steps // decisions updates. Segments such as `[(0.05, 20), (1.0, 30)]` give an end fraction and count: here 20 in the first 5%, then 30 over the rest. Update numbers such as `[500, 1000, 5000]` give the exact updates. A list sets the count: omit `decisions` or make it agree, or `wrap` raises. Each decision moves to the next check, every `every` updates. Two on one check merge. None falls in the last `every` updates. The first log line gives the remaining count. |
 | `show_next_decision` | on with the neutral and aggressive prompts | True gives the next scheduled decision's update in each message. False turns it off. |
@@ -295,14 +293,9 @@ No new decision is asked meanwhile. A failed turn, such as a crash, time limit o
 instead of the unavailable-agent wait.
 
 By default, `blocking=True` waits for the answer at each decision. Its edit takes effect from the update where the
-decision was asked, and the agent's thinking adds to wall time. `blocking=False` and `blocking="auto"` allow faster
+decision was asked, and the agent's thinking adds to wall time. `blocking=False` allows faster
 runs. Without waiting, an answer takes effect answer time / time per update updates after the state the agent saw.
 No new decision is asked while one is in progress, so fast runs may ask far fewer times.
-
-`blocking="auto"` waits when the answer would arrive more than `max_lag_updates` updates late, by default 50.
-It divides the median of the last 5 answer times by the time per update. That update time is the median over the last
-5 check intervals, excluding pauses. It always waits at the first decision.
-Each choice, its reason and its lag are in `events.jsonl` and the report.
 
 ## The report
 
@@ -415,7 +408,7 @@ schedule.
   The broker keeps waiting. When `close()` returns, the final `report.html` is written.
   It waits up to 30 s for pending Claude summaries.
 - `blocking=True` is deterministic given the agent's answers. Replaying a final program with `opal.replay` is
-  deterministic too. With `blocking=False` or `"auto"`, timing decides when an edit takes effect.
+  deterministic too. With `blocking=False`, timing decides when an edit takes effect.
   Two runs with the same answers can differ.
 - To turn the agent off mid-run, resume with `backend="keep"` or start a fresh run with `opal.replay(...)`.
 - For the Hugging Face Trainer, use `opal.hf.OpalTrainer` in place of `Trainer`.

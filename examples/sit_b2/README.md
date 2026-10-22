@@ -8,7 +8,7 @@ The score is FID-50K of samples from the EMA weights, without guidance.
 |---|---|---|---|
 | at 400K updates | 35.68 | 30.29 | **23.64** |
 
-Not rerun on OPAL 0.3. The numbers above come from the earlier training system OPAL grew from in October 2026.
+The numbers above come from the earlier training system OPAL grew from in October 2026.
 A training-side host connected to a broker running Claude Code, Opus 5.5 at effort `high`, with that system's prompt.
 It made 94 decisions: 19 every 1,251 updates, then every 5,004. Training paused at each decision.
 The wiring below is for OPAL 0.3.x. It has CPU checks only.

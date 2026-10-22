@@ -14,7 +14,7 @@ The gap is about 2.5 times that, from one run on each side. Record #36's publish
 It appears in row 36 of the [track README on master](https://github.com/KellerJordan/modded-nanogpt/blob/master/records/track_3_optimization/README.md).
 The README at the pinned commit below predates that row and lists only records 1 to 12.
 
-**Not rerun on OPAL 0.3 yet.** The 3.2749 run used OPAL 0.1.0 with that version's default prompt, which this release
+The 3.2749 run used OPAL 0.1.0 with that version's default prompt, which this release
 no longer ships: Claude Code (Opus 5.5, effort `high`), 100 decisions requested with checks every 10 updates (97 after
 snapping, all answered), training paused at each decision. A later run on OPAL 0.2.0 with the neutral prompt (50 evenly
 spaced decisions, 2 GPUs, a goal worded as reaching the target loss) ended at **3.2878, worse than record #36**.

@@ -70,9 +70,8 @@ parser.add_argument(
     nargs="?",
     const="true",
     default="true",
-    choices=["true", "false", "auto"],
-    help="true (default): training waits for each answer; false: it keeps going; auto: it waits "
-    "only when an answer would land late",
+    choices=["true", "false"],
+    help="true (default): training waits for each answer; false: it keeps going",
 )
 parser.add_argument("--max_cost_usd", type=float, default=15.0, help="stop asking the agent after this much spend")
 parser.add_argument(

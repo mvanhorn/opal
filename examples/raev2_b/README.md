@@ -5,21 +5,14 @@ It uses representation-autoencoder latents from a DINOv3 ViT-L/16 encoder and Vi
 Training ran for 25,020 updates with batch 1,024, or 20 epochs.
 The score is FID-50K of samples from the EMA weights, without guidance.
 
-| FID-50K ↓ (one run each) | Official recipe (our run) | Reactive optimizer, asked for efficiency | Reactive optimizer, neutral prompt |
-|---|---|---|---|
-| after 25,000 updates | 3.385 | **3.101** | 3.455 (worse than official) |
+| FID-50K ↓ (one run each) | Official recipe (our run) | Reactive optimizer |
+|---|---|---|
+| after 25,000 updates | 3.385 | **3.192** |
 
 The paper's figure for this setting is 3.37 (its Table 6, B at 20 epochs).
 
-On OPAL 0.3, the rerun scored 3.192: one run, neutral prompt, 50 decisions of which 6 changed the program,
+The agent run used OPAL 0.3 with the neutral prompt: 50 decisions of which 6 changed the program,
 $13.30, 3 h 45 min on 8× H100. This wall time includes evaluations and waiting for the agent.
-
-The table above comes from the earlier training system OPAL grew from in October 2026.
-It used Claude Code, Opus 5.5 at effort `high`, with 100 decisions every 250 updates.
-Training paused at each decision. The better run asked for efficiency:
-"Make this diffusion-model training run more efficient by designing its optimization algorithm and controlling it
-online ... The aim is a better model from the same 25,020 updates."
-That system's neutral prompt ended worse than the official recipe. OPAL defaults to a neutral prompt.
 
 ## Official code
 
@@ -81,19 +74,18 @@ EXPERIMENT_NAME=raev2-b20-agent OPAL_MAX_COST_USD=20 \
 
 ## Our runs
 
-| | Official recipe | Asked for efficiency | Neutral prompt |
-|---|---|---|---|
-| Hardware | 8× H100 80GB | 8× H100 80GB | 8× H100 80GB |
-| Reported run time, including agent waits | 3.1 h | 4.6 h, of which 1.4 h waiting for the agent | – |
-| Agent cost | – | $15.99 | $9.94 |
-| Decisions answered / that changed code | – | 100 / 16 (the last at decision 45) | 100 / 6 |
-| FID-50K at 25,000 | 3.385 | 3.101 | 3.455 |
+| | Official recipe | Reactive optimizer |
+|---|---|---|
+| Hardware | 8× H100 80GB | 8× H100 80GB |
+| Reported run time, including agent waits | 3.21 h | 3.75 h, of which 0.49 h waiting for the agent |
+| Agent cost | – | $13.30 |
+| Decisions answered / that changed code | – | 50 / 6 |
+| FID-50K at 25,000 | 3.385 | 3.192 |
 
-The earlier summary gives 3.1 h for the official run. Its log records 3.21 h including evaluations and 2.65 h without
-them. The 4.6 h agent time above includes its 1.4 h wait.
+The official run's log records 3.21 h including evaluations and 2.65 h without them.
 
-The earlier runs used upstream code with an optimizer hook and our logging, launched as above.
-That code and the earlier training system are not in this repository.
+Both runs used upstream code with our logging, launched as above.
+That code is not in this repository.
 
 We evaluated FID-50K every 5,000 updates during training, using ImageNet validation labels, 50 Euler steps,
 no guidance and EMA weights. Scoring used torch-fidelity against `imagenet_256_fid_stats`, the default ImageNet 256

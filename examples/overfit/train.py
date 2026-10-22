@@ -65,7 +65,7 @@ def parse(argv=None):
     p.add_argument("--decisions", type=int, default=30)
     p.add_argument("--decision-schedule", choices=["uniform", "front"], default="uniform")  # when the agent is asked
     p.add_argument("--every", type=int, default=50, help="OPAL's check interval, in updates")
-    p.add_argument("--blocking", choices=["true", "false", "auto"], default="true")
+    p.add_argument("--blocking", choices=["true", "false"], default="true")
     p.add_argument("--prompt", default="neutral")
     p.add_argument("--no-share-code", dest="share_code", action="store_false")
     p.add_argument("--max-cost-usd", type=float, default=None, help="stop asking the agent after this much spend")
