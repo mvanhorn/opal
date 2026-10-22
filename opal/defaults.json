@@ -5,7 +5,7 @@
  "misc/neutral_analysis.py": "1caa3720dd424c34d6d3076551f6c6f24882e5e6724266cf4fac84b870db2cd2",
  "misc/setup.py": "e52e4f391b40be19c56c76abe6db1e05dbbe494dbc0d3e249a47e1220ee570c6",
  "misc/taskfacts.py": "9ee5148cc7e441bee6a08f01e49e07c0fb8dc67e42843e1813f846c50fcd15dc",
- "programs.py": "663a949f3e2c0acdc11422c1f6e5be7593551e8e69781d5923a20b05b05a9286",
+ "programs.py": "ba768b66f15502d02654f0ff860cddfdfc1b0965c5eb4d82712930602a0b56b6",
  "prompts/example_updater.py": "e7548f935ce808c625bfdceee324173571c3ce2272eab66e490a87394da5911f",
  "prompts/neutral.md": "87e7b83756acffc87c25e5b24fae32b203c3c1cdf9d2452b6716c1cf943ee57d"
 }

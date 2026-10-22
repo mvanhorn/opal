@@ -328,7 +328,10 @@ def test_l1_resume_bookkeeping(tmp_path):
     )
     w2.load_state_dict(ck)
     train(m2, w2, data, 400, sched=s2, start=150)
-    assert msgs and "from update 151" in msgs[0]
+    # The pending window starts after the last decision, including observations before the checkpoint.
+    pending_from = ck["observations"]["_pending_from"]
+    assert pending_from <= 150
+    assert msgs and f"from update {pending_from:,}" in msgs[0]
 
 
 # ----- DDP: an exception on one rank only, inside the trial window ------------------------------------------------

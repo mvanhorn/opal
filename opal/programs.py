@@ -182,7 +182,9 @@ def unpicklable(obj) -> list:
         if not any(kind is allowed for allowed in (
             torch.Tensor, torch.nn.Parameter, dict, Counter, OrderedDict, list, tuple, set, frozenset,
         )):
-            raise TypeError("non-plain state type outside the closed allowlist")
+            # Read the builtin type slot directly: ordinary attribute access can invoke a metaclass.
+            name = type.__dict__["__qualname__"].__get__(kind)
+            raise TypeError("non-plain state type " + str.__str__(name))
         if id(value) in active:
             raise TypeError("cyclic state container")
         active.add(id(value))

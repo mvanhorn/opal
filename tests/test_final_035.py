@@ -110,6 +110,7 @@ def test_redaction_literal_forms(quote, gap, prefix):
 def test_redaction_form_fields(diagnostic):
     cleaned = redact_secrets(diagnostic)
     assert 'FAKE' not in cleaned and cleaned.endswith('&step=2')
+    assert cleaned.startswith(diagnostic.split('=', 1)[0] + '=')
 
 
 def _claim_racer(folder, barrier, queue, me):
@@ -277,5 +278,5 @@ def test_closed_allowlist_uses_type_identity_without_custom_metaclass_code():
         def __reduce__(self):
             calls.append('reducer')
             return torch.Size, ([2, 3],)
-    assert programs.unpicklable(Custom())
+    assert "Custom" in programs.unpicklable(Custom())[0]
     assert calls == []

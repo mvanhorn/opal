@@ -10,7 +10,7 @@ _SECRET = re.compile(
     r"(?<![A-Za-z0-9_])hf_[A-Za-z0-9]{16,}(?![A-Za-z0-9_])|"
     r"(?<![A-Za-z0-9_])AKIA[A-Z0-9]{16}(?![A-Za-z0-9_])|"
     r"(?i:\bBearer)\s+[^\s\"'<>\\,;{}\[\]&]+|"
-    r"(?i:\baccess_token)=([^\s&\"'<>]+)",
+    r"(?i:(?<=\baccess_token=))[^\s&\"'<>]+",
 )
 _ESCAPE = re.compile(r'\\(?:u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2}|[\\/"\'abfnrtv])|%[0-9a-fA-F]{2}')
 _STRING_JOIN = re.compile(r"""(?:\"{3}|'{3}|(?<!')'(?!'')|(?<!\")\"(?!\"\"))\s*(?:[bBuUrR]{0,2})(?:\"{3}|'{3}|'(?!')|\"(?!\"))""")
