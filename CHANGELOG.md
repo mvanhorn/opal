@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.7 (2026-10-22)
+
+- Documentation and examples only, apart from one printed notice; the optimizer math, the agent prompt and the agent's tools are unchanged.
+- The README and the examples page report each task's newest OPAL run (RAEv2-B 3.19, Goldfish 77.25, LightningDiT-B/1 2.31) and no longer list older-system numbers.
+- The examples page has a section on training without waiting for the agent (`blocking=False`), with the RAEv2-B official, blocking and non-blocking runs.
+- The README says why long runs suit OPAL, with measured waiting times.
+- `blocking="auto"` is no longer documented or offered by the example scripts. Using it prints that it is experimental and untested on real training runs.
+
 ## 0.3.6 (2026-10-22)
 
 - Fixes from a from-scratch test of the install and the agent prompt; the optimizer math, the agent prompt and the agent's tools are unchanged.

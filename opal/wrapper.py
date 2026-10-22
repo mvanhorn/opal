@@ -643,6 +643,10 @@ class AgentOptimizer(
             f"{'auto-blocking' if self._auto else 'blocking' if self.blocking else 'non-blocking'}; "
             f"backend {self._backend_label}"
         )
+        if self._auto:
+            self._notice(
+                'blocking="auto" is experimental and untested on real training runs; use True (default) or False'
+            )
         describe = getattr(self.worker.backend, "describe", None) if self.worker else None
         if describe:
             self._log(describe())
