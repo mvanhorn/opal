@@ -117,6 +117,48 @@ def test_raw_parameter_changes_are_refused_before_update_or_zero(tmp_path, metho
         opt.close(interrupted=True)
 
 
+@pytest.mark.parametrize("optimizer", ["AdamW", "SGD"])
+def test_unfreeze_existing_group_matches_adding_group_bit_for_bit(tmp_path, optimizer):
+    torch.manual_seed(42)
+    plain = torch.nn.Sequential(torch.nn.Linear(3, 4), torch.nn.Tanh(), torch.nn.Linear(4, 2))
+    kept = copy.deepcopy(plain)
+    options = dict(lr=0.03, weight_decay=0.1)
+    if optimizer == "SGD":
+        options.update(momentum=0.9, nesterov=True)
+    factory = getattr(torch.optim, optimizer)
+    plain[0].requires_grad_(False)
+    kept[0].requires_grad_(False)
+    raw_plain = factory(plain[2].parameters(), **options)
+    raw_kept = factory(
+        [{"params": kept[2].parameters()}, {"params": kept[0].parameters(), "lr": 0.02}], **options,
+    )
+    opt = wrap(kept, raw_kept, tmp_path / "run", total_steps=8)
+    try:
+        for step in range(8):
+            if step == 3:
+                plain[0].requires_grad_(True)
+                kept[0].requires_grad_(True)
+                raw_plain.add_param_group(dict(params=plain[0].parameters(), lr=0.02))
+            x, y = torch.randn(5, 3), torch.randn(5, 2)
+            for model, optimizer_instance in [(plain, raw_plain), (kept, opt)]:
+                optimizer_instance.zero_grad()
+                loss = (model(x) - y).square().mean()
+                loss.backward()
+                if optimizer_instance is opt:
+                    opt.step(loss=loss)
+                else:
+                    optimizer_instance.step()
+            for left, right in zip(plain.parameters(), kept.parameters()):
+                assert torch.equal(left.detach().view(torch.uint8), right.detach().view(torch.uint8)), (optimizer, step)
+                for key, value in raw_plain.state.get(left, {}).items():
+                    other = raw_kept.state[right][key]
+                    assert torch.equal(value, other) if torch.is_tensor(value) else value == other
+            if step < 3:
+                assert all(p.grad is None and p not in raw_kept.state for p in kept[0].parameters())
+    finally:
+        opt.close()
+
+
 def test_multiple_optimizers_with_gradscaler_are_refused_before_any_update(tmp_path):
     model = torch.nn.Linear(1, 1)
     raw = [torch.optim.SGD([p], lr=0.1) for p in model.parameters()]

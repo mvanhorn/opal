@@ -32,6 +32,7 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
+from torch.distributed.algorithms.join import Join, Joinable
 
 from . import context, defaults, estimate, programs
 from .agent import AgentWorker, Run, new_run_dir, now_stamp
@@ -307,6 +308,7 @@ class AgentOptimizer(
     SetupMixin,
     SkipMixin,
     torch.optim.Optimizer,
+    Joinable,
 ):
     def __init__(
         self,
@@ -350,6 +352,7 @@ class AgentOptimizer(
         eval_integrity_threshold=5.0,
         verbose=True,
     ):
+        Joinable.__init__(self)
         self.user_optimizers = list(optimizer) if isinstance(optimizer, (list, tuple)) else [optimizer]
         accelerated = [o for o in self.user_optimizers if _is_accelerate(o)]
         self.user_optimizers = [_inside_accelerate(o) for o in self.user_optimizers]
@@ -975,6 +978,8 @@ class AgentOptimizer(
 
     @torch.no_grad()
     def step(self, closure=None, loss=None):
+        Join.notify_join_context(self)
+        self._check_join_inputs()
         self._check_user_parameters()
         if closure is not None:
             with torch.enable_grad():

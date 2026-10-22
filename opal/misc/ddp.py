@@ -7,6 +7,23 @@ import sys
 
 import torch
 import torch.distributed as dist
+from torch.distributed.algorithms.join import JoinHook
+
+
+UNEVEN_INPUTS_ERROR = (
+    "opal: uneven inputs across DDP ranks (torch.distributed.algorithms.Join) are not supported; "
+    "give every rank the same number of steps"
+)
+
+
+class _UnevenInputsHook(JoinHook):
+    def __init__(self, optimizer):
+        self.optimizer = optimizer
+
+    def main_hook(self):
+        self.optimizer._check_join_inputs(joined=True)
+
+
 
 
 def _parameter_chunks(tensor, limit=1_048_576):
@@ -29,6 +46,31 @@ def _parameter_chunks(tensor, limit=1_048_576):
 
 
 class DDPMixin:
+    def join_hook(self, **kwargs):
+        return _UnevenInputsHook(self)
+
+    @property
+    def join_device(self):
+        return self.device
+
+    @property
+    def join_process_group(self):
+        # Join requires the model and optimizer to use the same process group.
+        from ..context import _wrappers
+
+        for model in _wrappers(self.model):
+            if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+                return model.process_group
+        return dist.group.WORLD
+
+    def _check_join_inputs(self, joined=False):
+        if not self.dist or not self._join_config.enable:
+            return
+        active = torch.tensor([0 if joined else 1])
+        dist.all_reduce(active, op=dist.ReduceOp.MIN, group=self.ctrl)
+        if not active.item():
+            raise RuntimeError(UNEVEN_INPUTS_ERROR)
+
     def _agree(self, ok: bool) -> bool:
         """True on every rank only if `ok` on every rank (one gloo all-reduce; no-op on one process)."""
         if not self.dist:
