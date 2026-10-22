@@ -6,6 +6,7 @@ caught and stopped (F3, DW2); an analysis.py without analyze() is rejected (F19)
 when they are made (F6)."""
 
 import json
+import os
 import sys
 
 import pytest
@@ -279,7 +280,8 @@ def test_f5_a_cast_after_the_trial_window_is_caught_before_the_next_forward(tmp_
     assert m[0].weight.dtype == torch.float32 and w.update == 200
 
 
-@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="needs a second device (MPS)")
+@pytest.mark.skipif(os.environ.get("OPAL_CPU_ONLY") == "1" or not torch.backends.mps.is_available(),
+                    reason="needs a second device (MPS); disabled by OPAL_CPU_ONLY=1")
 def test_f4_a_device_change_is_caught_and_put_back(tmp_path):
     to_cpu = LATE_CAST.replace("self.k == 25", "self.k == 1").replace("p0.data.bfloat16()", "p0.data.cpu()")
     m, data = make()
