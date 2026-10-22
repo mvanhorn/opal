@@ -3,6 +3,7 @@
 import ast
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -114,11 +115,34 @@ def test_the_controller_acts_through_the_rule_and_its_state_is_checkpointed(tmp_
         w.zero_grad()
         loss = torch.nn.functional.mse_loss(m(x), y)
         loss.backward()
+        before = flat(m).clone()
         w.step(loss=loss)
         s.step()
+        if w.version == 1:
+            assert torch.equal(flat(m), before)  # including the update that installs the controller
         if w.version == 1 and "at" not in seen:
             seen["at"], seen["w"] = i, flat(m).clone()
     assert seen and torch.equal(flat(m), seen["w"])  # a zero multiplier: no update after the first one
     state = w.state_dict()["updater"]["lr_controller"]
     assert set(state) == {"signal", "mult"} and all(float(v) > 0 for v in state["signal"].values())
     assert all(float(v) == 0 for v in state["mult"].values())
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("multiplier", [0, 1])
+def test_controller_preserves_exact_endpoints_despite_cancellation(dtype, multiplier):
+    namespace = {"torch": torch, "SIGNAL_DECAY": 0.5}
+    exec(aggressive.CONTROLLER, namespace)
+    namespace["lr_rule"] = lambda signal, mult, update, total: torch.full_like(mult, multiplier)
+    # The small value is lost when subtracting it from one; subtracting the delta
+    # back from the updated parameter cannot recover the original bits.
+    small = torch.finfo(dtype).eps / 8
+    original = torch.tensor([small, 1, -small], dtype=dtype)
+    proposed = torch.tensor([1, small, -1], dtype=dtype)
+    parameter = original.clone()
+    rule = SimpleNamespace(groups=[dict(key="g", params=[parameter])])
+    controller = namespace["LRController"](rule, {})
+    before = controller.before()
+    parameter.copy_(proposed)
+    controller.after(before, update=1, total=2)
+    assert torch.equal(parameter, original if multiplier == 0 else proposed)
