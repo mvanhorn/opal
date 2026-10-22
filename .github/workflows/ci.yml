@@ -24,6 +24,8 @@ jobs:
     env:
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
+      # All CPU DDP workers share this runner; avoid hostname/interface discovery.
+      GLOO_SOCKET_IFNAME: ${{ runner.os == 'macOS' && 'lo0' || 'lo' }}
       CUDA_VISIBLE_DEVICES: ''
       HIP_VISIBLE_DEVICES: ''
       OPAL_REAL_CLI: '0'
@@ -103,6 +105,7 @@ jobs:
     env:
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
+      GLOO_SOCKET_IFNAME: lo0
       CUDA_VISIBLE_DEVICES: ''
       HIP_VISIBLE_DEVICES: ''
       OPAL_REAL_CLI: '0'
