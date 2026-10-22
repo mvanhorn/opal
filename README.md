@@ -17,9 +17,10 @@ rewrite two small programs: the optimizer program, which turns gradients into up
 program, which measures whatever the agent wants to look at.
 
 The agent can change anything that can be written as optimizer code: the update rule of each parameter group, the
-learning rates and their schedules, momentum and β₂, preconditioning, clipping, guards against loss spikes. It cannot
-touch your model, data, loss, batch size, number of steps or evaluation. Until the agent changes something, the
-wrapped run is bit-for-bit the same as the plain one.
+learning rates and their schedules, momentum and β₂, preconditioning, clipping, guards against loss spikes. It is
+asked not to touch your model, data, loss, batch size, number of steps or evaluation. Its programs run inside your
+training process, so this is a rule, not a sandbox (see [Safety](docs/GUIDE.md#safety)). Until the agent changes
+something, the wrapped run is bit-for-bit the same as the plain one.
 
 ## Start with your coding agent
 
