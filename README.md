@@ -24,17 +24,17 @@ something, the wrapped run is bit-for-bit the same as the plain one.
 
 ## Start with your coding agent
 
-Clone this repository, open your own project in a coding agent (Claude Code, Codex, Cursor or similar) and paste this
-prompt. The agent installs OPAL, wires it into your training script, asks you what it cannot know, and checks that
-nothing changed before anything costs money.
+Open your own project in a coding agent (Claude Code, Codex, Cursor or similar) and paste this prompt. The agent
+installs OPAL, wires it into your training script, asks you what it cannot know, and checks that nothing changed
+before anything costs money.
 
 ```text
 I want to train my model with OPAL, a reactive optimizer: a coding agent that rewrites the optimizer while the
-model trains. OPAL is cloned at <PATH TO OPAL>. Please set it up for this project:
+model trains. Its docs are at https://github.com/xingjian-bai/opal. Please set it up for this project:
 
-1. Read <PATH TO OPAL>/README.md and <PATH TO OPAL>/skills/train-with-agent/SKILL.md, and follow the skill. Do not
-   edit any file inside <PATH TO OPAL>; configure everything through opal.wrap arguments.
-2. Install OPAL into the Python environment this project trains with (pip install -e <PATH TO OPAL>), and
+1. Read the README there and skills/train-with-agent/SKILL.md, and follow the skill. Do not edit OPAL's own files;
+   configure everything through opal.wrap arguments.
+2. Install OPAL into the Python environment this project trains with (pip install opal-optimizer), and
    run `opal doctor` (free, offline) to check that torch and Claude Code are ready on the machine that will run
    training; run `opal doctor --live` (one tiny paid agent call) only once I approve an agent run. If Claude Code is
    missing or not logged in there, tell me what to run; do not log in for me.
@@ -46,8 +46,9 @@ model trains. OPAL is cloned at <PATH TO OPAL>. Please set it up for this projec
    must match step for step. Show me both. If I only asked for a dry run, stop here.
 7. Before the real run, time an update in the smoke test and run `opal estimate --total-steps N --sec-per-step S`;
    show me what it prints (how long training will wait for the agent, also as a multiple of the run's own time, and
-   the cost). Ask me for a cost cap (max_cost_usd) and how many times the agent should decide, and wait for my
-   go-ahead; then give me the exact command to launch it, and how to follow it (opal show, opal report).
+   the cost). Ask me for a cost cap (max_cost_usd); leave decisions unset unless I ask, so that the waiting stays
+   within 4x the run's own time. Wait for my go-ahead; then give me the exact command to launch it, and how to
+   follow it (opal show, opal report).
 ```
 
 ## Start by hand

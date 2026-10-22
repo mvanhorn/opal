@@ -18,11 +18,14 @@ Keep test data and labels out of the training process, evaluate the final checkp
 1. **Find the loop.** Locate the training script and the place where the optimizer and LR scheduler are built and
    where `optimizer.step()` is called. Note: number of optimizer steps in the run (`total_steps`), data-parallel setup
    (single GPU, DDP, Accelerate, HF Trainer, Lightning, FSDP/DeepSpeed), gradient clipping in the loop, GradScaler,
-   gradient accumulation, EMA, checkpoint save/load.
+   gradient accumulation, EMA, checkpoint save/load, and whether parameter groups are added during training (for
+   example layers unfrozen later).
 2. **Check it is supported.** FSDP, ZeRO/DeepSpeed, tensor or pipeline parallelism and JAX are not supported: stop
    and tell the user. With an HF Trainer, use `opal.hf.OpalTrainer` (docs/GUIDE.md, "Hugging Face Trainer").
    With Accelerate, wrap after `accelerator.prepare` (GUIDE, "Accelerate"). Lightning is untested: say so before
-   continuing.
+   continuing. All parameter groups must exist before `wrap`: for layers unfrozen later, create their group up front
+   with `requires_grad=False` and set it to True when they are unfrozen. With DDP, every rank must run the same number
+   of steps; uneven inputs under `Join` stop with an error.
 3. **Write the goal sentence with the user**: what the run trains and what it is judged by at the end (for example
    "ResNet-18 on CIFAR-10, judged by test accuracy after 30 epochs"). Ask; do not invent the metric.
 4. **Wrap.** Right after the optimizer and scheduler are created:
@@ -46,7 +49,8 @@ Keep test data and labels out of the training process, evaluate the final checkp
    machine has no agent, use `backend="mailbox:<folder on the GPU machine>"`, check it there with
    `opal doctor --backend mailbox:<folder>`, and give the user the broker command:
    `opal broker <folder> --ssh <user@gpu-host> --backend claude --model claude-opus-5-5 --effort high`. With a
-   mailbox the model and effort are set on the broker, not in `backend_options`. The broker's machine must stay awake
+   mailbox the model and effort are set on the broker, not in `backend_options`. Over ssh, the GPU host needs
+   `python3` (3.6 or newer) on its non-interactive PATH; the doctor checks it. The broker's machine must stay awake
    for the whole run (on a Mac: `caffeinate -i opal broker ...`); while no broker answers, the run waits.
 7. **Smoke test before the real run**: run about 100 updates twice with a reduced `total_steps`, once unwrapped and
    once wrapped with `backend="keep"` (no agent, no cost), and check that the losses match step for step. Time the
