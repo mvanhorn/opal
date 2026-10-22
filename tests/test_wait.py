@@ -2,6 +2,7 @@
 at the first decision); the report counts scheduled, asked, answered and applied decisions in every mode."""
 
 import json
+import threading
 import time
 
 import pytest
@@ -13,7 +14,7 @@ from test_core import MOMENTUM_UPDATER, adamw, events, flat, make
 from test_review2 import plain_run
 
 
-def run(tmp_path, agent, steps, step_sleep=0.0, **kw):
+def run(tmp_path, agent, steps, step_sleep=0.0, after_step=None, **kw):
     m, data = make()
     o, s = adamw(m, steps)
     kw = dict(dict(decisions=4, every=10, blocking="auto", verbose=False), **kw)
@@ -25,6 +26,8 @@ def run(tmp_path, agent, steps, step_sleep=0.0, **kw):
         loss.backward()
         w.step(loss=loss)
         s.step()
+        if after_step:
+            after_step(w)
         if step_sleep:
             time.sleep(step_sleep)
     ev = events(tmp_path / "r")
@@ -85,8 +88,24 @@ def test_summary_counts_scheduled_asked_answered_applied(tmp_path):
     assert (c["scheduled"], c["asked"], c["answered"], c["applied"]) == (4, 4, 3, 1)
     page = write_report(tmp_path / "a" / "r").read_text()
     assert "Decisions: 4 scheduled, 4 asked, 3 answered, 1 applied (changed the programs)" in page
-    # the default, non-blocking: a slow agent on fast steps is asked about few of the scheduled decisions
-    m, w, req, out, ev = run(tmp_path / "b", thinking(0.2), 300, step_sleep=0.002, blocking=False, decisions=10)
+    # Hold the first answer across scheduled decisions, independent of CPU speed.
+    started, release = threading.Event(), threading.Event()
+
+    def held(ws, msg, sys_):
+        started.set()
+        assert release.wait(60)
+        return "x"
+
+    def advance(w):
+        if w.update == 10:
+            assert started.wait(60)
+        if w.update == 150:
+            release.set()
+
+    try:
+        m, w, req, out, ev = run(tmp_path / "b", held, 300, blocking=False, decisions=10, after_step=advance)
+    finally:
+        release.set()
     c = decision_counts(ev)
     assert c["scheduled"] == 10 and c["asked"] == len(req) < 10 and c["answered"] <= c["asked"]
     assert c["waited"] == c["did_not_wait"] == 0 and all("wait" not in r for r in req)

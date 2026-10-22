@@ -3,6 +3,7 @@ import copy
 import html
 import io
 import json
+import pickle
 import threading
 from datetime import timedelta
 
@@ -68,38 +69,49 @@ def test_prepared_public_state_reset_is_bit_identical(tmp_path):
     assert torch.equal(run(False), run(True))
 
 
-def _view_ranks(rank, folder, rendezvous):
+def _view_ranks(rank, folder, rendezvous, view, dtype):
     from pathlib import Path
     dist.init_process_group('gloo', init_method=rendezvous, rank=rank, world_size=2,
                             timeout=timedelta(seconds=30))
     try:
-        for view in ('conjugate', 'negative'):
-            results = []
-            for wrapped in (False, True):
-                model = torch.nn.Linear(2, 2, bias=False, dtype=torch.complex64)
-                value = torch.ones(2, 2, dtype=torch.complex64) * (1 + 1j)
-                model.weight = torch.nn.Parameter(value.conj() if view == 'conjugate' else torch._neg_view(value))
+        results = []
+        for wrapped in (False, True):
+            model = torch.nn.Linear(2, 2, bias=False, dtype=dtype)
+            value = torch.ones(2, 2, dtype=dtype) * ((1 + 1j) if dtype.is_complex else 1)
+            model.weight = torch.nn.Parameter(value.conj() if view == 'conjugate' else torch._neg_view(value))
+            try:
                 ddp = torch.nn.parallel.DistributedDataParallel(model)
-                raw = torch.optim.SGD(model.parameters(), lr=.1)
-                opt = wrap(ddp, raw, Path(folder) / (view + str(wrapped)), rank_check_every=1) if wrapped else raw
-                try:
-                    for _ in range(3):
-                        opt.zero_grad()
-                        loss = ddp(torch.ones(2, 2, dtype=torch.complex64)).abs().square().mean()
-                        loss.backward()
-                        opt.step(loss=loss) if wrapped else opt.step()
-                    results.append(model.weight.detach().resolve_conj().resolve_neg().clone())
-                finally:
-                    if wrapped:
-                        opt.close(interrupted=True)
-                dist.barrier()
-            assert torch.equal(*results)
+            except RuntimeError as exc:
+                if dtype.is_complex and str(exc) == 'Invalid scalar type':
+                    # Older Gloo rejects complex DDP before OPAL is constructed.
+                    (Path(folder) / f'unsupported-{rank}').write_text(str(exc))
+                    return
+                raise
+            raw = torch.optim.SGD(model.parameters(), lr=.1)
+            opt = wrap(ddp, raw, Path(folder) / (view + str(wrapped)), rank_check_every=1) if wrapped else raw
+            try:
+                for _ in range(3):
+                    opt.zero_grad()
+                    loss = ddp(torch.ones(2, 2, dtype=dtype)).abs().square().mean()
+                    loss.backward()
+                    opt.step(loss=loss) if wrapped else opt.step()
+                results.append(model.weight.detach().resolve_conj().resolve_neg().clone())
+            finally:
+                if wrapped:
+                    opt.close(interrupted=True)
+            dist.barrier()
+        assert torch.equal(*results)
     finally:
         dist.destroy_process_group()
 
 
-def test_conjugate_and_negative_views_two_real_gloo_ranks(tmp_path):
-    mp.spawn(_view_ranks, args=(str(tmp_path), (tmp_path / 'init').as_uri()), nprocs=2, join=True)
+@pytest.mark.parametrize('view,dtype', [('conjugate', torch.complex64), ('negative', torch.complex64),
+                                       ('negative', torch.float32)])
+def test_conjugate_and_negative_views_two_real_gloo_ranks(tmp_path, view, dtype):
+    mp.spawn(_view_ranks, args=(str(tmp_path), (tmp_path / 'init').as_uri(), view, dtype), nprocs=2, join=True)
+    if (tmp_path / 'unsupported-0').exists():
+        assert (tmp_path / 'unsupported-1').exists()
+        pytest.skip('installed PyTorch/Gloo cannot construct complex DDP (before OPAL)')
 
 
 @pytest.mark.parametrize('value', [torch.Size([2, 3]), torch.float32, torch.device('cpu'),
@@ -108,8 +120,13 @@ def test_weights_only_safe_state_types(value):
     stream = io.BytesIO()
     torch.save(value, stream)
     stream.seek(0)
-    torch.load(stream, weights_only=True)
-    assert not programs.unpicklable(value)
+    try:
+        torch.load(stream, weights_only=True)
+    except pickle.UnpicklingError:
+        # The guard must reject library types the installed safe loader cannot read.
+        assert programs.unpicklable(value)
+    else:
+        assert not programs.unpicklable(value)
 
 
 def test_old_shape_checkpoint_and_analysis_only_starting_exemption(tmp_path):
