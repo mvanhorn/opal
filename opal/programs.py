@@ -179,12 +179,23 @@ def normalize_state(obj):
         if id(value) in memo:
             return memo[id(value)]
         if any(kind is t for t in (dict, OrderedDict, Counter)):
+            attrs = vars(value) if kind is not dict else None
+            if attrs is not None and type(attrs) is not dict:
+                return value  # the guard rejects custom attribute dictionaries without calling their methods
             out = kind()
             memo[id(value)] = out
             for key, item in dict.items(value):
-                out[convert(key, depth + 1)] = convert(item, depth + 1)
-            if kind is not dict:
-                vars(out).update(convert(vars(value), depth + 1))
+                key = convert(key, depth + 1)
+                if unpicklable(key):  # inserting a rejected key would call its __hash__
+                    memo[id(value)] = value
+                    return value
+                out[key] = convert(item, depth + 1)
+            if attrs is not None:
+                attrs = convert(attrs, depth + 1)
+                if unpicklable(attrs):
+                    memo[id(value)] = value
+                    return value
+                vars(out).update(attrs)
             return out
         if kind is list:
             out = []
@@ -193,7 +204,10 @@ def normalize_state(obj):
             return out
         if any(kind is t for t in (tuple, set, frozenset)):
             memo[id(value)] = value
-            out = kind(convert(item, depth + 1) for item in value)
+            items = [convert(item, depth + 1) for item in value]
+            if kind is not tuple and any(unpicklable(item) for item in items):
+                return value  # do not hash unsupported set members either
+            out = kind(items)
             memo[id(value)] = out
             return out
         return value

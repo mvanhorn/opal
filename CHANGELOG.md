@@ -9,7 +9,7 @@
 - Reclaim the same broker's lease immediately after restart instead of waiting for the stale timeout (F1).
 - Log mailbox lease backoff once per request (F2).
 - Keep aggressive LR interpolation on-device with tensor-list weights and exact zero/one endpoints (F3).
-- Normalize NumPy updater state and record every dropped checkpoint field in events and HTML, including quiet runs (F4).
+- Normalize NumPy updater state without calling rejected container hooks; record dropped fields in events and HTML, including quiet runs (F4).
 
 - Check updater state with a closed allowlist without invoking custom serialization hooks.
 - Redact form-encoded bearers, access tokens, triple-quoted, adjacent and bytes literals in diagnostics.

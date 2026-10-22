@@ -270,3 +270,40 @@ def test_state_dropped_event_and_report_with_verbose_false(tmp_path, where):
     events = [json.loads(row) for row in (opt.run.dir / 'events.jsonl').read_text().splitlines()]
     assert any(e['kind'] == 'state_dropped' and e.get('reason') for e in events)
     assert 'state_dropped' in (opt.run.dir / 'report.html').read_text()
+
+
+@pytest.mark.parametrize('location', ['key', 'attributes', 'set'])
+def test_normalizing_rejected_state_does_not_call_custom_container_code(tmp_path, location):
+    from collections import Counter
+    calls = []
+    class Key:
+        def __hash__(self):
+            calls.append('hash')
+            return 1
+    class Attributes(dict):
+        def __iter__(self):
+            calls.append('iter')
+            return super().__iter__()
+        def keys(self):
+            calls.append('keys')
+            return super().keys()
+    if location == 'key':
+        value = {Key(): 1}
+    elif location == 'set':
+        value = {Key()}
+    else:
+        value = Counter()
+        value.__dict__ = Attributes(x=1)
+    model = torch.nn.Linear(1, 1)
+    opt = wrap(model, torch.optim.SGD(model.parameters(), lr=.1), tmp_path / 'run')
+    try:
+        opt._apply(dict(k=1, requested_at=0, files=dict(opt.files, **{'updater.py': UPDATER})), 0)
+        assert opt.version == 1
+        opt.updater.state_dict = lambda: {'value': value}
+        calls.clear()
+        assert opt.state_dict()['updater'] is None
+        assert calls == []
+        events = [json.loads(row) for row in (opt.run.dir / 'events.jsonl').read_text().splitlines()]
+        assert any(e['kind'] == 'state_dropped' for e in events)
+    finally:
+        opt.close(interrupted=True)
