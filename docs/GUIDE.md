@@ -139,7 +139,7 @@ Keep the Trainer's `max_grad_norm`. Moving clipping into OPAL can change roundin
 byte-identical.
 
 ```bash
-pip install "opal-optimizer[hf] @ git+https://github.com/xingjian-bai/opal"
+pip install "opal-optimizer[hf]"
 ```
 
 ```python
@@ -363,6 +363,7 @@ schedule.
 ## Fitting it into your training script
 
 - Create all parameter groups before you call `opal.wrap`. If the raw optimizer's parameters change afterwards, OPAL raises an error at the next `step` or `zero_grad`.
+  To unfreeze layers during training, put them in a parameter group from the start with `requires_grad=False` and set it to True when you unfreeze them. torch.optim optimizers skip parameters without a gradient, so this gives the same updates as adding the group later.
 - For gradient accumulation, call `opt.step(loss=...)` once per update with that update's mean loss.
 - The agent reads your scheduler's settings and a `LambdaLR` function's source, but not its closure values.
   If warmup and decay lengths come from variables or flags outside the code it reads, state them in `task_facts`.
@@ -396,9 +397,12 @@ schedule.
   Restarting from a checkpoint replaces it with its predecessor, or the starting program if that also crashed.
   You can use the same run folder or a new one. The checkpoint remembers the old folder.
   In DDP, the consistency checks compare SHA-256 digests of the parameter bytes, copied to CPU in chunks at each check.
+  Uneven inputs across DDP ranks (`torch.distributed.algorithms.Join`) are not supported: OPAL stops with a clear error when a rank runs out of data. Give every rank the same number of steps.
 - For checkpoints, save `opt.state_dict()` and your scheduler's `state_dict()`.
   OPAL's state holds the programs, their state, the agent session, and your optimizers' and schedulers' state,
   whatever the program's `state_dict()` holds. It also holds analysis memory.
+  Checkpoints made with `opt.state_dict()` keep the observations the agent has not seen yet (loss windows, analysis reports, and metrics logged with `show_agent=True`), so a resumed run shows the agent the same thing as an uninterrupted one. Older checkpoints cannot recover observations that were never saved.
+  State that the agent's updater keeps must use plain types: numbers, strings, bytes, None, tensors, torch sizes, dtypes, devices, layouts and memory formats, and lists, tuples, dicts (including OrderedDict and Counter), sets and frozensets of these. Sets, frozensets and memory formats must also be supported by the installed PyTorch weights-only loader. NumPy values are converted to numbers or tensors. Anything else is left out of the checkpoint with a warning and a `state_dropped` event; custom serialization hooks are never run.
   The starting analysis keeps a tensor per parameter role, including GPT-2's whole token embedding.
   To resume, rebuild the optimizer and scheduler, call `wrap(...)` with the same arguments, then `load_state_dict`.
   With the default run folder, an interrupted run continues in the checkpoint's folder and conversation if it is
@@ -415,7 +419,7 @@ schedule.
   Two runs with the same answers can differ.
 - To turn the agent off mid-run, resume with `backend="keep"` or start a fresh run with `opal.replay(...)`.
 - For the Hugging Face Trainer, use `opal.hf.OpalTrainer` in place of `Trainer`.
-  Install it with `pip install "opal-optimizer[hf] @ git+https://github.com/xingjian-bai/opal"`:
+  Install it with `pip install "opal-optimizer[hf]"` (or `pip install "opal-optimizer[hf] @ git+https://github.com/xingjian-bai/opal"`):
 
   ```python
   from opal.hf import OpalTrainer
@@ -509,8 +513,8 @@ Notes survive a change of broker. A broker without the run's conversation tells 
 
 Before starting the agent, a broker claims a request by exclusively creating `claim-NNNN.json`.
 This stops two brokers from answering and billing the same fresh request.
-A claim with no refresh for 2 minutes can be taken over. That takeover is not yet atomic, as recorded in issue #1.
-Run one broker per run.
+A claim with no refresh for 2 minutes can be taken over.
+Mailbox brokers hold a lease on each request; a lease taken over by another broker cannot be renewed, released or answered by the old one. The mailbox host must provide Python 3.6 or newer as `python3` on the broker's non-interactive SSH PATH; run `opal doctor --backend mailbox:<folder>` in that same environment before starting the broker.
 
 The broker runs the agent for at most the time the agent was told it has: the mailbox `timeout`, by default 6 hours,
 less the request's wait and a minute to write the answer. A shorter broker `--timeout` stays in force and is logged.

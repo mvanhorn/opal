@@ -53,12 +53,11 @@ model trains. OPAL is cloned at <PATH TO OPAL>. Please set it up for this projec
 ## Start by hand
 
 ```bash
-pip install "git+https://github.com/xingjian-bai/opal"   # or: git clone, then pip install -e ".[examples]"
+pip install opal-optimizer           # or: git clone, then pip install -e ".[examples]"
 opal doctor                          # torch and Claude Code ready?
 ```
 
-The package is called `opal-optimizer`, because `opal` on PyPI is an unrelated web framework. Both install as
-`import opal`, so do not install both.
+The package is called `opal-optimizer` on PyPI, because `opal` there is an unrelated web framework. Both install as `import opal`, so do not install both.
 
 ```python
 import torch, opal
@@ -116,11 +115,14 @@ Each number is one run, and each agent started from the task's own recipe:
 | RAEv2-B, ImageNet 256, 20 epochs | FID-50K ↓ | 3.39 | 3.10 (prompt asked for efficiency), 3.46 (neutral prompt); rerun on OPAL 0.3: 3.19 |
 | Goldfish 125M GPT, Swahili | FLORES-200 bits ↓ | 79.37 | 77.60; rerun on OPAL 0.3: 77.25 |
 | modded-nanogpt record #36 | validation loss ↓ | 3.2781 | 3.2749 |
+| LightningDiT-B/1, ImageNet 256, 160 epochs | FID-50K ↓ (with guidance) | 3.22 | rerun on OPAL 0.3: 2.31 |
 
 It does not always help: a run of modded-nanogpt on OPAL 0.2.0 ended at 3.2878, worse than record #36. Your
 numbers may also differ from ours, because the agent can choose differently from one run to the next. The
 [examples page](examples/README.md) has every number with its version, hardware, time and cost, the small CPU and
 one-GPU scripts, and how to rerun each setting.
+
+Our run records and final weights are on Hugging Face: [snow-leopard/opal-results](https://huggingface.co/datasets/snow-leopard/opal-results).
 
 ## How it works
 
@@ -180,7 +182,7 @@ Code CLI against a local mock.
 
 ## Status and limitations
 
-v0.3.4, under active development. Tested on one GPU and on DDP within one node (NCCL, eager and `torch.compile`).
+v0.3.5, under active development. Tested on one GPU and on DDP within one node (NCCL, eager and `torch.compile`).
 Multi-node, FSDP and DeepSpeed are not supported. Accelerate works if you wrap after `accelerator.prepare`, without
 fp16 GradScaler or Accelerate's gradient accumulation; the HF Trainer works through `opal.hf.OpalTrainer`. Both are
 tested on CPU. Lightning should work through `opt.observe(loss)` but we have not tried it. The agent can make a run

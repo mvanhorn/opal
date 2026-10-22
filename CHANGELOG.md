@@ -2,6 +2,10 @@
 
 ## 0.3.5 (2026-10-21)
 
+- Reject uneven DDP inputs on every rank through the optimizer's Joinable interface instead of hanging (#2).
+- Update installation, LightningDiT results and run records, remove the overfit result, and document mailbox leases, checkpoint state and the unfreezing workaround.
+- Exclude local opal_runs artifacts from the wheel and source distribution.
+
 - Normalize logged NumPy metrics and allowlist checkpoint observations for safe plain and Accelerate resumes (B1).
 - Send SSH lease arguments and large answers over stdin; failed answer retries no longer block new requests (B2).
 - Clear and release claims after SSH failures; let a restarted broker reclaim its own lease with generation fencing (B3).

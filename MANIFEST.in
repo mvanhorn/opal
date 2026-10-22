@@ -1,4 +1,5 @@
 prune tests
+prune opal_runs
 graft docs
 graft skills
 graft examples

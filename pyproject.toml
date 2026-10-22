@@ -32,7 +32,7 @@ hf = ["transformers>=4.57.1", "accelerate>=1.4.0"]  # opal.hf.OpalTrainer
 opal = "opal.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["opal*"]
+include = ["opal", "opal.*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "opal._version.__version__"}
