@@ -328,7 +328,7 @@ Private locations and recorded identities are omitted from messages, code and pl
 calls.
 
 Cached descriptions and tags come from Claude Opus at low effort through the Claude Code CLI, with no tools.
-One call per code change costs about a cent. It is recorded in `decisions/NNN/summary.json` and excluded from
+One call per code change costs a few cents ($0.02 to $0.06 in our checks). It is recorded in `decisions/NNN/summary.json` and excluded from
 `max_cost_usd`. A change can have any number of these tags:
 
 - `common practice`: standard recipes, such as Muon, warmup, cosine or linear decay, clipping and AdamW betas.
@@ -485,6 +485,8 @@ On the GPU machine, `opal doctor --backend mailbox:/scratch/me/opal-box` checks 
 whether a broker serves it. That machine needs no Claude Code. Set the model and effort on the broker with
 `opal broker ... --model claude-opus-5-5 --effort high`, the defaults, rather than in the run's `backend_options`.
 The broker's machine must stay awake for the whole run. On a Mac, use `caffeinate -i opal broker ...`.
+The broker's ssh runs with `BatchMode=yes`, so it cannot ask for a password or a second factor. Log in with a key,
+or open a connection it can share before you start it: `ssh -fNM -o ControlPath=~/.ssh/opal-%r@%h-%p me@gpu-host`.
 The run waits while no broker answers, as described under "When the agent is unavailable".
 Mailbox runs do not make code-change summaries during training.
 Run `opal report <run> --summarize` where Claude Code is logged in to add them.

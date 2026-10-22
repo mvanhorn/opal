@@ -17,6 +17,11 @@ dependencies = [
     "numpy>=1.26.4",  # torch's NumPy bridge
 ]
 
+[project.urls]
+Homepage = "https://github.com/xingjian-bai/opal"
+Documentation = "https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md"
+"Blog post" = "https://xingjianbai.com/reactive-optimizers/"
+
 [project.optional-dependencies]
 examples = [
     "torchvision>=0.20; python_version < '3.13'",

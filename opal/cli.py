@@ -148,6 +148,7 @@ def doctor_mailbox(spec):
 
 
 def doctor(a):
+    import os
     import platform
     import shutil
     import subprocess
@@ -163,6 +164,13 @@ def doctor(a):
         f"torch {torch.__version__}; CUDA available: {torch.cuda.is_available()}"
         + (f" ({torch.cuda.device_count()} x {torch.cuda.get_device_name(0)})" if torch.cuda.is_available() else "")
     )
+    if not torch.cuda.is_available() and (shutil.which("nvidia-smi") or os.path.exists("/dev/nvidiactl")):
+        built = f"built for CUDA {torch.version.cuda}" if torch.version.cuda else "a CPU-only build"
+        print(
+            f"this machine has an NVIDIA GPU, but torch {torch.__version__} ({built}) cannot use it: for GPU training, "
+            "install the torch build for your driver first (https://pytorch.org/get-started/locally/), or check "
+            "CUDA_VISIBLE_DEVICES"
+        )
     for name in ("codex" if a.backend == "codex" else "claude",):
         exe = shutil.which(name)
         ver = ""
@@ -209,7 +217,9 @@ def doctor(a):
             reply = (out.get("text") or "").strip()
             ok = out.get("returncode") == 0 and "READY" in reply
             print(
-                f"live call: {'ok' if ok else 'failed'} ({out.get('seconds', 0):.0f} s; reply {reply[:80]!r}; error {out.get('error')})"
+                f"live call: {'ok' if ok else 'failed'} ({out.get('seconds', 0):.0f} s"
+                + (f", ${out['cost_usd']:.2f}" if isinstance(out.get("cost_usd"), (int, float)) else "")
+                + f"; reply {reply[:80]!r}; error {out.get('error')})"
             )
             if a.backend == "codex":
                 print(f"Codex thread: {out.get('session')}; provider rollout: {out.get('rollout')}")

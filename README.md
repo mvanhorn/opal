@@ -5,9 +5,9 @@
 
 <p align="center">
   <a href="https://xingjianbai.com/reactive-optimizers/">Blog post</a> ·
-  <a href="docs/GUIDE.md">Guide</a> ·
+  <a href="https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md">Guide</a> ·
   <a href="#start-with-your-coding-agent">Start with your agent</a> ·
-  <a href="examples/README.md">Examples</a>
+  <a href="https://github.com/xingjian-bai/opal/blob/main/examples/README.md">Examples</a>
 </p>
 
 Most networks are trained with an optimizer that is fixed before training starts. OPAL (OPtimizer with an Agent in
@@ -19,7 +19,7 @@ program, which measures whatever the agent wants to look at.
 The agent can change anything that can be written as optimizer code: the update rule of each parameter group, the
 learning rates and their schedules, momentum and β₂, preconditioning, clipping, guards against loss spikes. It is
 asked not to touch your model, data, loss, batch size, number of steps or evaluation. Its programs run inside your
-training process, so this is a rule, not a sandbox (see [Safety](docs/GUIDE.md#safety)). Until the agent changes
+training process, so this is a rule, not a sandbox (see [Safety](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md#safety)). Until the agent changes
 something, the wrapped run is bit-for-bit the same as the plain one.
 
 ## Start with your coding agent
@@ -60,6 +60,11 @@ opal doctor                          # torch and Claude Code ready?
 
 The package is called `opal-optimizer` on PyPI, because `opal` there is an unrelated web framework. Both install as `import opal`, so do not install both.
 
+On a GPU machine, install OPAL into the environment you already train with, or install the PyTorch build for your
+driver first ([pytorch.org](https://pytorch.org/get-started/locally/)). In an empty environment, `pip install
+opal-optimizer` pulls the newest torch from PyPI, which may need a newer NVIDIA driver; `opal doctor` then shows
+`CUDA available: False`.
+
 ```python
 import torch, opal
 
@@ -91,8 +96,11 @@ opal show   opal_runs/<folder>                   # one line per decision
 opal report opal_runs/<folder>                   # one HTML page: loss, learning rates, rationales, code diffs
 ```
 
+Each wrapped run prints a `profiler_start` / `profiler_stop` pair on stderr when a program starts: OPAL audits one
+update of each new program. It is harmless.
+
 The guide shows how to check the keep run against your plain run byte for byte, and how to use the Hugging Face
-Trainer: [Try it without an agent](docs/GUIDE.md#try-it-without-an-agent).
+Trainer: [Try it without an agent](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md#try-it-without-an-agent).
 
 ## Prerequisites
 
@@ -104,7 +112,7 @@ Trainer: [Try it without an agent](docs/GUIDE.md#try-it-without-an-agent).
   The short summaries of code changes in the report are not counted (`summarize=False` turns them off). A dry run
   with `backend="keep"` needs neither and makes no model calls.
 - **No internet or no login on the GPU machine?** Run the agent on your laptop or a login node and connect it to the
-  training job through a shared folder (see [the mailbox broker](docs/GUIDE.md#gpu-machines-without-an-agent)).
+  training job through a mailbox folder, over ssh or a shared filesystem (see [the mailbox broker](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md#gpu-machines-without-an-agent)).
 
 ## Results
 
@@ -120,7 +128,7 @@ Each number is one run, and each agent started from the task's own recipe:
 
 It does not always help: a run of modded-nanogpt on OPAL 0.2.0 ended at 3.2878, worse than record #36. Your
 numbers may also differ from ours, because the agent can choose differently from one run to the next. The
-[examples page](examples/README.md) has every number with its version, hardware, time and cost, the small CPU and
+[examples page](https://github.com/xingjian-bai/opal/blob/main/examples/README.md) has every number with its version, hardware, time and cost, the small CPU and
 one-GPU scripts, and how to rerun each setting.
 
 Our run records and final weights are on Hugging Face: [snow-leopard/opal-results](https://huggingface.co/datasets/snow-leopard/opal-results).
@@ -154,17 +162,17 @@ Our run records and final weights are on Hugging Face: [snow-leopard/opal-result
 
 | Option | Default | Meaning |
 |---|---|---|
-| `decisions` | see right | How many times the agent is asked. Each time it may also keep everything as it is. If you do not set it, a run that waits for the agent asks at most as many times as keep the waiting under 4× the run's own training time (`opal estimate` shows the number), and at most 50. If you set it, that cap is off. A fifth of the decisions fall in the first 5% of the run; `schedule="uniform"` spaces them evenly. More in the [guide](docs/GUIDE.md#cost-and-limits). |
+| `decisions` | see right | How many times the agent is asked. Each time it may also keep everything as it is. If you do not set it, a run that waits for the agent asks at most as many times as keep the waiting under 4× the run's own training time (`opal estimate` shows the number), and at most 50, but at least once, even when one decision already waits longer than that. If you set it, that cap is off. A fifth of the decisions fall in the first 5% of the run; `schedule="uniform"` spaces them evenly. More in the [guide](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md#cost-and-limits). |
 | `every` | 50 | Steps between checks: losses are read, a non-finite loss is caught, the analysis program runs. |
 | `blocking` | `True` | `False` or `"auto"` to keep training while the agent thinks. |
 | `max_cost_usd` | none | Stop asking the agent once it has spent this much. |
-| `backend_options` | `{}` | `model=` (default `claude-opus-5-5`), `effort=` (default `high`) and `timeout=`. A failed agent turn is retried with growing pauses; an agent that is unavailable (login, usage limit, outage) is waited for, with no deadline unless you set `unavailable_timeout=`. Details in the [guide](docs/GUIDE.md#cost-and-limits). |
+| `backend_options` | `{}` | `model=` (default `claude-opus-5-5`), `effort=` (default `high`) and `timeout=`. A failed agent turn is retried with growing pauses; an agent that is unavailable (login, usage limit, outage) is waited for, with no deadline unless you set `unavailable_timeout=`. Details in the [guide](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md#cost-and-limits). |
 | `prompt` | `"neutral"` | The agent's instructions: the facts of the run and the protocol, with no recommended values. `"aggressive"` adds a review of every group's hyperparameters at each decision. You can also pass the path of your own template. |
-| `validation` | none | `N`: your script evaluates a held-out development set about every N updates, at times it does not announce, and reports it with `opt.report_dev(loss=..., accuracy=...)`. The agent sees each result. See the [guide](docs/GUIDE.md#what-it-can-and-cannot-change). |
+| `validation` | none | `N`: your script evaluates a held-out development set about every N updates, at times it does not announce, and reports it with `opt.report_dev(loss=..., accuracy=...)`. The agent sees each result. See the [guide](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md#what-it-can-and-cannot-change). |
 | `eval_integrity` | on with `validation` | Flags a run whose program moves the parameters somewhere else for an evaluation and back afterwards. The agent is not told. |
 
 Gradient accumulation, GradScaler, checkpoints and resume, DDP, GPU machines without internet, privacy and cost are
-covered in the [guide](docs/GUIDE.md).
+covered in the [guide](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md).
 
 ### Experimental Codex backend
 
@@ -183,7 +191,7 @@ Code CLI against a local mock.
 
 ## Status and limitations
 
-v0.3.5, under active development. Tested on one GPU and on DDP within one node (NCCL, eager and `torch.compile`).
+v0.3.6, under active development. Tested on one GPU and on DDP within one node (NCCL, eager and `torch.compile`).
 Multi-node, FSDP and DeepSpeed are not supported. Accelerate works if you wrap after `accelerator.prepare`, without
 fp16 GradScaler or Accelerate's gradient accumulation; the HF Trainer works through `opal.hf.OpalTrainer`. Both are
 tested on CPU. Lightning should work through `opt.observe(loss)` but we have not tried it. The agent can make a run
@@ -203,6 +211,6 @@ worse: it cannot restart or roll back training, it can only fix its programs at 
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](https://github.com/xingjian-bai/opal/blob/main/LICENSE).
 
 *The name:* OPAL stands for OPtimizer with an Agent in the Loop.

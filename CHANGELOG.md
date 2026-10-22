@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.6 (2026-10-22)
+
+- Fixes from a from-scratch test of the install and the agent prompt; the optimizer math, the agent prompt and the agent's tools are unchanged.
+- `opal doctor` says when the machine has an NVIDIA GPU that the installed torch cannot use; the README explains how to install the torch build for the driver first.
+- The ssh mailbox broker explains a "Permission denied" from a host that asks for a password, and the guide and skill show how to share one connection.
+- `opal estimate` no longer offers a decision count that still waits more than 4x, and says when training ends before the first answer.
+- The report records the training waiting time for user scripts.
+- The privacy filter keeps numbers such as `/1000`.
+- The PyPI page links to the repository, the guide and the blog post, and README links work outside GitHub.
+
 ## 0.3.5 (2026-10-21)
 
 - Reject uneven DDP inputs on every rank through the optimizer's Joinable interface instead of hanging (#2).

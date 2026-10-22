@@ -50,7 +50,9 @@ Keep test data and labels out of the training process, evaluate the final checkp
    `opal doctor --backend mailbox:<folder>`, and give the user the broker command:
    `opal broker <folder> --ssh <user@gpu-host> --backend claude --model claude-opus-5-5 --effort high`. With a
    mailbox the model and effort are set on the broker, not in `backend_options`. Over ssh, the GPU host needs
-   `python3` (3.6 or newer) on its non-interactive PATH; the doctor checks it. The broker's machine must stay awake
+   `python3` (3.6 or newer) on its non-interactive PATH; the doctor checks it. The broker's ssh cannot answer a
+   password prompt: if the host asks for one, tell the user to log in with a key or to open a shared connection
+   first (`ssh -fNM -o ControlPath=~/.ssh/opal-%r@%h-%p <user@gpu-host>`). The broker's machine must stay awake
    for the whole run (on a Mac: `caffeinate -i opal broker ...`); while no broker answers, the run waits.
 7. **Smoke test before the real run**: run about 100 updates twice with a reduced `total_steps`, once unwrapped and
    once wrapped with `backend="keep"` (no agent, no cost), and check that the losses match step for step. Time the
@@ -59,7 +61,8 @@ Keep test data and labels out of the training process, evaluate the final checkp
    run's `total_steps` and the measured seconds per update (add `--decisions K`, `--every E`, `--no-blocking` or
    `--mailbox` as the wrap call will have them). Show the user its lines as they are: the run's time without the
    agent, the expected waiting for the agent (a range, and as a multiple of the run's own time) and the expected
-   cost. If `decisions` is not set, OPAL lowers it so that the waiting stays within 4x the run's own time; say so.
+   cost. If `decisions` is not set, OPAL lowers it so that the waiting stays within 4x the run's own time, but keeps
+   at least one decision, even when one already waits longer (short runs); say so.
    Ask for `max_cost_usd`, and give the launch command only after the user confirms. Then switch to the real
    backend, with `max_cost_usd`. The agent defaults to claude-opus-5-5 at effort high, the blog's
    setting; set `backend_options=dict(model=..., effort=...)` only if the user asks (the run then warns that the blog's

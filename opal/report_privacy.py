@@ -125,7 +125,7 @@ class Privacy:
     def _path(self, match):
         path = match[0]
         # Avoid eating arithmetic such as `1 / 2`, or regex syntax such as /\w+/.
-        if path in ("/", "//"):
+        if path in ("/", "//") or not re.search(r"[A-Za-z]", path):  # also `(u-1)/1000`: no letters, no location
             return path
         for root in sorted(self.roots, key=len, reverse=True):
             if path == root:

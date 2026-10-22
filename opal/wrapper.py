@@ -1647,6 +1647,7 @@ class AgentOptimizer(
             decisions=self.worker.k if self.worker else 0,
             cost_usd=self.worker.recorded_cost if self.worker else 0,
             unknown_cost_decisions=sorted(self.worker.unknown_cost_decisions) if self.worker else [],
+            agent_wait_seconds=round(self.agent_wait_seconds, 1),  # the report's "training waiting time"
             **(dict(pending_decision=self.worker.k) if settling else {}),
             **(dict(usage=self.worker.usage) if self.worker and self.worker.usage is not None else {}),
             **(dict(eval_integrity=checked) if checked else {}),

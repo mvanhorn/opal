@@ -67,8 +67,20 @@ def test_decisions_set_are_kept_and_warned_about(tmp_path, capsys):
     w.close()
     assert w.schedule == before and len(before) == 4
     err = capsys.readouterr().err
-    assert "the expected waiting is more than 4x the run's own time: ask fewer times (decisions=1" in err
+    # this run trains in well under a second: even one decision waits more than 4x, so no smaller count is offered
+    assert "even one decision waits more than 4x the run's own time" in err and "keeps it within" not in err
     assert not [e for e in events(tmp_path / "r") if e["kind"] == "estimate" and "capped_from" in e]
+
+
+def test_explicit_decisions_offer_a_count_only_when_it_fits():
+    from opal import estimate
+
+    fits = estimate.lines(10_000, 0.05, 80)  # 8 min of training: 65 decisions keep the waiting within 4x
+    assert any("ask fewer times (decisions=65 keeps it within 4x)" in line for line in fits)
+    short = estimate.lines(1_000, 0.00055, 2)  # 1 s of training: no count fits
+    assert any("even one decision waits more than 4x" in line for line in short)
+    assert not any("keeps it within" in line for line in short)
+    assert any("training would end before the first answer arrives" in line for line in short)
 
 
 def test_a_resumed_run_keeps_the_capped_schedule(tmp_path):

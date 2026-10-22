@@ -490,7 +490,13 @@ class _Folder:
     def _sh(self, cmd, data=None):
         # without data, give ssh an empty stdin: it would otherwise read (and forward) the broker's own stdin
         io = dict(input=data) if data is not None else dict(stdin=subprocess.DEVNULL)
-        return subprocess.run(self.base + [cmd], capture_output=True, timeout=120, **io)
+        p = subprocess.run(self.base + [cmd], capture_output=True, timeout=120, **io)
+        if p.returncode == 255 and b"Permission denied" in p.stderr:  # BatchMode: ssh cannot ask for a password
+            p.stderr = p.stderr.strip() + (
+                " (the broker's ssh cannot ask for a password: use an ssh key, or open a connection it can share "
+                f"first: ssh -fNM -o ControlPath=~/.ssh/opal-%r@%h-%p {self.ssh})"
+            ).encode()
+        return p
 
     def read(self, name):
         if not self.ssh:

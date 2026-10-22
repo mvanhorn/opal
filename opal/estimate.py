@@ -102,16 +102,26 @@ def lines(total_steps, sec_per_step, decisions, blocking=True, max_lag=50, model
             f"decisions not set: {decisions} scheduled instead of {capped_from}, so that the expected waiting stays "
             f"within {MAX_WAIT_FACTOR:g}x the run's own time (set decisions= to choose)"
         )
-    if over and (decisions <= 1 or not explicit):
+    fewer = capped_decisions(decisions, run, blocking, sec_per_step, max_lag) if over else decisions
+    # a run shorter than one typical answer ends before the answer arrives when training does not wait for it
+    no_wait = (
+        "blocking=False lets training go on while the agent thinks"
+        if run >= FIRST_SECONDS[1]
+        else "blocking=False would not help: training would end before the first answer arrives"
+    )
+    if over and (
+        decisions <= 1 or not explicit or waiting(fewer, blocking, sec_per_step, max_lag) > MAX_WAIT_FACTOR * run
+    ):
+        n = decisions if not explicit and decisions > 1 else 1
         out.append(
-            f"even {'one decision' if decisions <= 1 else f'{decisions} decisions'} wait{'s' * (decisions <= 1)} more "
-            f"than {MAX_WAIT_FACTOR:g}x the run's own time; blocking=False lets training go on while the agent thinks"
+            f"even {'one decision' if n <= 1 else f'{n} decisions'} wait{'s' * (n <= 1)} more "
+            f"than {MAX_WAIT_FACTOR:g}x the run's own time; {no_wait}"
         )
     elif over:
         out.append(
             f"the expected waiting is more than {MAX_WAIT_FACTOR:g}x the run's own time: ask fewer times "
-            f"(decisions={capped_decisions(decisions, run, blocking, sec_per_step, max_lag)} keeps it within "
-            f"{MAX_WAIT_FACTOR:g}x) or let training go on while the agent thinks (blocking=False)"
+            f"(decisions={fewer} keeps it within {MAX_WAIT_FACTOR:g}x) or let training go on while the agent thinks "
+            f"(blocking=False)"
         )
     if (model, effort) != (MODEL, EFFORT):
         out.append(
