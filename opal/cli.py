@@ -1,4 +1,4 @@
-"""opal broker | say | report | show | doctor | estimate"""
+"""opal broker | say | report | show | watch | doctor | estimate"""
 
 from __future__ import annotations
 
@@ -310,6 +310,21 @@ def main(argv=None):
     w = sub.add_parser("show", help="print a run's decisions and where its final program is")
     w.add_argument("run")
 
+    h = sub.add_parser("watch", help="print a run's events as they are written")
+    h.add_argument("run")
+    h.add_argument(
+        "--interval",
+        type=float,
+        default=1.0,
+        help="seconds between checks of events.jsonl (default 1)",
+    )
+    h.add_argument(
+        "--timeout",
+        type=float,
+        help="idle seconds to wait after the last new event; 0 prints what is there and returns; "
+        "omitted: wait until the run finishes",
+    )
+
     d = sub.add_parser("doctor", help="check that torch and an agent CLI are ready on this machine")
     d.add_argument("--live", action="store_true", help="also make one tiny agent call (costs a few cents)")
     d.add_argument(
@@ -346,6 +361,10 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == "doctor" and a.backend not in ("claude", "codex") and not a.backend.startswith("mailbox:"):
         ap.error("doctor --backend must be claude, codex or mailbox:<folder>")
+    if a.cmd == "watch" and a.interval <= 0:
+        ap.error("watch --interval must be greater than 0")
+    if a.cmd == "watch" and a.timeout is not None and a.timeout < 0:
+        ap.error("watch --timeout must be zero or positive")
     if a.cmd == "estimate":
         return estimate_cmd(a)
     if a.cmd == "broker":
@@ -399,6 +418,10 @@ def main(argv=None):
         _show(run)
         print(f"final program: {final_program(run)}")
         print("rerun it with no agent: opal.replay(<that folder>, optimizer, model, total_steps=...)")
+    elif a.cmd == "watch":
+        from . import watch as watchmod
+
+        return watchmod.follow(_run_folder(a.run), interval=a.interval, timeout=a.timeout)
     return 0
 
 

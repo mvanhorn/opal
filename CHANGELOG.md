@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `opal watch <run>` prints a run's events as they are written and returns when the run finishes. `--timeout 0`
+  prints what is already there; a positive `--timeout` is idle seconds after the last new event.
+
 ## 0.3.7 (2026-10-22)
 
 - Documentation and examples only, apart from one printed notice; the optimizer math, the agent prompt and the agent's tools are unchanged.
