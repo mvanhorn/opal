@@ -112,6 +112,17 @@ def test_watch_prints_each_line_at_once_through_a_pipe(tmp_path):
         assert proc.wait(timeout=60) == 0
 
 
+def test_watch_stops_quietly_when_the_reader_closes_the_pipe(tmp_path):
+    many = [dict(kind="requested", k=k, update=k, utc="2026-10-21T00:00:01Z") for k in range(3, 3000)]
+    run = write_run(tmp_path / "r", extra=many)  # far more output than a pipe buffer holds
+    cmd = [sys.executable, "-m", "opal.cli", "watch", str(run), "--timeout", "0"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert proc.stdout.readline().startswith("watching")
+    proc.stdout.close()  # what `| head -1` does
+    assert proc.wait(timeout=60) == 0
+    assert "Traceback" not in proc.stderr.read()
+
+
 def test_watch_ctrl_c_exits_130_without_a_traceback(tmp_path, monkeypatch):
     run = write_run(tmp_path / "r", finished=False)
 
@@ -193,6 +204,13 @@ def test_watch_missing_folder_exits(tmp_path):
     with pytest.raises(SystemExit) as exited:
         cli.main(["watch", str(tmp_path / "missing"), "--timeout", "0"])
     assert "not a run folder" in str(exited.value)
+
+
+@pytest.mark.parametrize("args", [["--interval", "nan"], ["--interval", "inf"], ["--timeout", "nan"]])
+def test_watch_rejects_a_non_finite_interval_or_timeout(args, capsys):
+    with pytest.raises(SystemExit) as exited:
+        cli.main(["watch", "r", *args])
+    assert exited.value.code == 2
 
 
 def test_watch_rejects_a_non_positive_interval(capsys):

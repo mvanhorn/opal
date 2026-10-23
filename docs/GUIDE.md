@@ -205,10 +205,9 @@ without a scaler or accumulation. Compare your plain and keep loops with the sam
 Accelerate fp16 GradScaler and `gradient_accumulation_steps` greater than 1 are not supported.
 
 Use `opt.log(validation_accuracy=value)` to record a measurement without showing it to the agent.
-Finish a keep check with `opal show` and `opal report` on the printed run folder. During a longer run, `opal watch`
-prints events as they are written. Leave out `--summarize` to avoid
-model calls. The `profiler_start` / `profiler_stop` lines on stderr come from OPAL's one audited update per new
-program and are harmless.
+Finish a keep check with `opal show` and `opal report` on the printed run folder. Leave out `--summarize` to avoid
+model calls. During a longer run, `opal watch` prints events as they are written. The `profiler_start` /
+`profiler_stop` lines on stderr come from OPAL's one audited update per new program and are harmless.
 
 ## Experimental Codex backend
 

@@ -363,9 +363,9 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == "doctor" and a.backend not in ("claude", "codex") and not a.backend.startswith("mailbox:"):
         ap.error("doctor --backend must be claude, codex or mailbox:<folder>")
-    if a.cmd == "watch" and a.interval <= 0:
+    if a.cmd == "watch" and not 0 < a.interval < float("inf"):  # also rejects nan
         ap.error("watch --interval must be greater than 0")
-    if a.cmd == "watch" and a.timeout is not None and a.timeout < 0:
+    if a.cmd == "watch" and a.timeout is not None and not 0 <= a.timeout < float("inf"):
         ap.error("watch --timeout must be zero or positive")
     if a.cmd == "estimate":
         return estimate_cmd(a)
@@ -427,6 +427,11 @@ def main(argv=None):
             return watchmod.follow(_run_folder(a.run), interval=a.interval, timeout=a.timeout)
         except KeyboardInterrupt:
             return 130  # Ctrl-C ends the watch, not the run
+        except BrokenPipeError:  # the reader went away (| head): stop quietly, as opal show does
+            import os
+
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())  # so the exit flush cannot fail again
+            return 0
     elif a.cmd == "compare":
         from . import compare
 
