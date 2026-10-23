@@ -1,8 +1,9 @@
 """Print a run's events as they are written.
 
 `opal watch <run>` prints one line per event, starting from the beginning of events.jsonl, then waits for more.
-It returns when the run has finished (`end` or `interrupted`, and no later `resumed`). `--timeout 0` prints what is
-already there and returns; a positive `--timeout` is idle seconds after the last new event.
+It returns 0 when the run has finished (`end` or `interrupted`, and no later `resumed`). A run killed without close()
+(SIGTERM, SIGKILL, out of memory) writes neither: a positive `--timeout` gives up after that many seconds without a new
+event, and `--timeout 0` prints what is already there; both then return 1.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .report import OUTCOMES, _finished, _jsonl, _number, _response, _text
+from .report import OUTCOMES, _finished, _index, _jsonl, _number, _response, _text, end_cost, outcome_label
 
 
 def _mode(start) -> str:
@@ -32,18 +33,8 @@ def _secs(value):
     return f"{value:.0f} s" if float(value) >= 1 else f"{value:g} s"
 
 
-def _outcome(events, k, o) -> str:
-    kind = o.get("kind", "pending")
-    req = next((e for e in events if e.get("kind") == "requested" and e.get("k") == k), {})
-    if kind == "pending" and any(
-        e.get("kind") in ("resumed", "end") and e.get("utc", "") > req.get("utc", "") for e in events
-    ):
-        kind = "lost"
-    if kind == "applied":
-        kind = "changed"
-    elif o.get("failed") and not o.get("gave_up"):
-        kind = "failed"
-    return kind
+def _say(line):
+    print(line, flush=True)  # through a pipe (| grep, | tee) each line arrives when it is written
 
 
 def event_line(run, event, events=None) -> str:
@@ -60,13 +51,16 @@ def event_line(run, event, events=None) -> str:
         return f"requested  k={event.get('k')}  at update {at}"
     if kind in (*OUTCOMES, "cancelled"):
         events = events or []
-        label = _outcome(events, event.get("k"), event)
-        resp = _response(run, event["k"]) if _number(event.get("k")) else {}
+        k = event.get("k")
+        req = next((e for e in events if e.get("kind") == "requested" and e.get("k") == k), {})
+        label = outcome_label(events, req, event)
+        resp = _response(run, k) if _index(k) else {}
         said = " ".join(_text(resp.get("text")).split())[:70]
         cost, secs = _cost(resp.get("cost_usd")), _secs(resp.get("seconds"))
         extra = "  ".join(x for x in (secs, cost, said) if x)
         applied = f"{event.get('applied_at'):,}" if _number(event.get("applied_at")) else at
-        return f"{label:<10} k={event.get('k')}  at update {applied}" + (f"  {extra}" if extra else "")
+        where = f"  at update {applied}" if applied else ""  # a cancelled decision has none
+        return f"{label:<10} k={k}{where}" + (f"  {extra}" if extra else "")
     if kind == "estimate":
         n = event.get("decisions", "?")
         extra = f"; capped from {event['capped_from']}" if _number(event.get("capped_from")) else ""
@@ -74,8 +68,8 @@ def event_line(run, event, events=None) -> str:
     if kind == "end":
         n = event.get("decisions")
         n = f"{n} decisions; " if _number(n) else ""
-        cost = _cost(event.get("cost_usd")) or "cost not recorded"
-        return f"finished at update {at}; {n}{cost}"
+        start = next((e for e in events or [] if e.get("kind") == "start"), {})
+        return f"finished at update {at}; {n}{end_cost(start, event)}"
     if kind == "interrupted":
         return f"interrupted at update {at}"
     if at:
@@ -83,19 +77,23 @@ def event_line(run, event, events=None) -> str:
     return kind
 
 
-def follow(run, *, interval=1.0, timeout=None, sleep=time.sleep, now=time.monotonic, write=print):
-    """Print new events until the run finishes, or until `timeout` idle seconds (0: do not wait). Returns 0."""
+def follow(run, *, interval=1.0, timeout=None, sleep=time.sleep, now=time.monotonic, write=_say):
+    """Print new events until the run finishes (returns 0), or until `timeout` seconds pass without one (returns 1; 0:
+    do not wait)."""
     run = Path(run)
     write(f"watching {run}")
-    seen = 0
+    shown = []  # the records printed so far
     last_new = now()
-    events = []
     while True:
         events = _jsonl(run / "events.jsonl")
-        if len(events) < seen:
-            seen = 0
-        fresh = events[seen:]
-        seen = len(events)
+        if events[: len(shown)] != shown:
+            write(
+                "events.jsonl was rewritten (a resume moves the records after its checkpoint to attempts/); printing "
+                "it again from the start"
+            )
+            shown = []
+        fresh = events[len(shown) :]
+        shown = events
         if fresh:
             last_new = now()
         for e in fresh:
@@ -109,7 +107,7 @@ def follow(run, *, interval=1.0, timeout=None, sleep=time.sleep, now=time.monoto
             return 0
         if timeout is not None and (timeout <= 0 or now() - last_new >= timeout):
             last = next((e.get("update") for e in reversed(events) if _number(e.get("update"))), None)
-            at = f" at update {last:,}" if last is not None else ""
-            write(f"still running{at}")
-            return 0
+            at = f" (last event at update {last:,})" if last is not None else ""
+            write(f"no end event yet{at}" if timeout <= 0 else f"no new event for {timeout:g} s{at}")
+            return 1
         sleep(interval)

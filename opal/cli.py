@@ -309,8 +309,9 @@ def main(argv=None):
     h.add_argument(
         "--timeout",
         type=float,
-        help="idle seconds to wait after the last new event; 0 prints what is there and returns; "
-        "omitted: wait until the run finishes",
+        help="seconds to wait for a new event, then exit with 1; 0 prints what is there and returns (1 if the run has "
+        "not finished); omitted: wait for the run's end event. A run killed without close() (SIGTERM, SIGKILL, out of "
+        "memory) never writes one: use --timeout",
     )
 
     d = sub.add_parser("doctor", help="check that torch and an agent CLI are ready on this machine")
@@ -409,7 +410,10 @@ def main(argv=None):
     elif a.cmd == "watch":
         from . import watch as watchmod
 
-        return watchmod.follow(_run_folder(a.run), interval=a.interval, timeout=a.timeout)
+        try:
+            return watchmod.follow(_run_folder(a.run), interval=a.interval, timeout=a.timeout)
+        except KeyboardInterrupt:
+            return 130  # Ctrl-C ends the watch, not the run
     return 0
 
 
