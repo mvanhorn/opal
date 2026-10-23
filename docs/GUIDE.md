@@ -347,7 +347,8 @@ asked, applied and failed, hardware, OPAL commit, full command and run folder. P
 the OPAL fields empty. `--save <folder>` writes `model.pt` and, for scripts that keep an EMA, `ema.pt`.
 `opal compare a b` sets two result.json files, or two run folders, beside each other. It prints the metric and
 command, decision counts, cost and waiting and, when both run folders are on this machine, the decisions that differ,
-matched by the update they were asked at. `--json` prints the same as JSON. Read one run with `opal show <run folder>`.
+matched by the update they were asked at. `--json` prints the two summaries and the differing decisions as JSON.
+Read one run with `opal show <run folder>`.
 
 Our run folders are not published. `opal.replay("<run folder>", optimizer, model, total_steps=...)` reruns the final
 program of one of your own runs in place of `opal.wrap(...)`. It runs the version named by `FINAL` deterministically.
