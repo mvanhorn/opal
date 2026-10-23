@@ -1,4 +1,4 @@
-"""opal broker | say | report | show | doctor | estimate"""
+"""opal broker | say | report | show | compare | doctor | estimate"""
 
 from __future__ import annotations
 
@@ -310,6 +310,14 @@ def main(argv=None):
     w = sub.add_parser("show", help="print a run's decisions and where its final program is")
     w.add_argument("run")
 
+    c = sub.add_parser(
+        "compare",
+        help="set two run folders, or two result.json files, beside each other",
+    )
+    c.add_argument("a", help="a run folder (events.jsonl) or a result.json")
+    c.add_argument("b", help="the other run folder or result.json")
+    c.add_argument("--json", action="store_true", help="print the two summaries and the differing decisions as JSON")
+
     d = sub.add_parser("doctor", help="check that torch and an agent CLI are ready on this machine")
     d.add_argument("--live", action="store_true", help="also make one tiny agent call (costs a few cents)")
     d.add_argument(
@@ -399,6 +407,17 @@ def main(argv=None):
         _show(run)
         print(f"final program: {final_program(run)}")
         print("rerun it with no agent: opal.replay(<that folder>, optimizer, model, total_steps=...)")
+    elif a.cmd == "compare":
+        from . import compare
+
+        try:
+            cmp = compare.compare(a.a, a.b)
+        except (FileNotFoundError, ValueError) as exc:
+            sys.exit(str(exc))
+        if a.json:
+            print(json.dumps(cmp, default=str, allow_nan=False, indent=2))
+        else:
+            print("\n".join(compare.lines(cmp)))
     return 0
 
 

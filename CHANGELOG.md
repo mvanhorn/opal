@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `opal compare a b` prints two run folders, or two result.json files, side by side: metric, command, decision counts,
+  cost, waiting, last training loss, and each decision whose outcome differs.
+
 ## 0.3.7 (2026-10-22)
 
 - Documentation and examples only, apart from one printed notice; the optimizer math, the agent prompt and the agent's tools are unchanged.
