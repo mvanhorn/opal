@@ -1,13 +1,15 @@
 """Set two OPAL run folders, or two result.json files, beside each other.
 
 `opal compare a b` prints the metric and command when those files exist, the decision counts, cost and waiting,
-and one line for each decision whose outcome differs. A run folder is one with `events.jsonl`. A result.json
-written by an example script (`--out`) is enough for the metric and command alone.
+and the decisions that differ, matched by the update they were asked at. A run folder is one with `events.jsonl`. A
+result.json written by an example script (`--out`) is enough for the metric and command alone; when the run folder it
+names (`opal_run`) is on this machine, its decisions are compared too.
 """
 
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from .report import (
@@ -22,6 +24,7 @@ from .report import (
     _text,
     decision_counts,
     describe_counts,
+    outcome_label,
 )
 
 
@@ -56,7 +59,7 @@ def _from_result_file(path: Path):
     elif (path.parent / "events.jsonl").exists():
         run = path.parent
     if run is not None:
-        return snapshot(run, result=obj)
+        return dict(snapshot(run, result=obj), path=str(path))
     return _result_only(path, obj)
 
 
@@ -81,12 +84,14 @@ def snapshot(run, result=None) -> dict:
         cost = end.get("cost_usd") if _number(end.get("cost_usd")) else None
     return dict(
         path=str(run),
+        run=str(run),
         kind="run",
         goal=_text(start.get("goal")) or None,
         backend=start.get("backend"),
         blocking=start.get("blocking"),
         total_updates=start.get("total_updates"),
         update=end.get("update"),
+        ended=end.get("kind"),
         finished=_finished(events),
         counts=counts,
         cost_usd=cost,
@@ -114,6 +119,7 @@ def _result_only(path: Path, obj: dict) -> dict:
         )
     return dict(
         path=str(path),
+        run=None,
         kind="result",
         goal=None,
         backend=None,
@@ -134,10 +140,11 @@ def _result_only(path: Path, obj: dict) -> dict:
 
 
 def _last_loss(run: Path):
+    """The last loss recorded, NaN or infinite included: a run that diverged shows it."""
     last = None
     for r in _jsonl(run / "losses.jsonl"):
         for v in _list(r.get("losses")):
-            if _number(v):
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
                 last = v
     return last
 
@@ -158,7 +165,7 @@ def _decisions(run: Path, events) -> list:
             dict(
                 k=k,
                 asked_at=r.get("update", o.get("requested_at")),
-                outcome=_outcome(events, k, o),
+                outcome=outcome_label(events, r, o),
                 applied_at=o.get("applied_at"),
                 seconds=resp.get("seconds"),
                 cost_usd=resp.get("cost_usd"),
@@ -168,33 +175,50 @@ def _decisions(run: Path, events) -> list:
     return rows
 
 
-def _outcome(events, k, o) -> str:
-    kind = o.get("kind", "pending")
-    req = next((e for e in events if e.get("kind") == "requested" and e.get("k") == k), {})
-    if kind == "pending" and any(
-        e.get("kind") in ("resumed", "end") and e.get("utc", "") > req.get("utc", "") for e in events
-    ):
-        kind = "lost"
-    if kind == "applied":
-        kind = "changed"
-    elif o.get("failed") and not o.get("gave_up"):
-        kind = "failed"
-    return kind
+def _by_update(decisions) -> dict:
+    """Decisions keyed by the update they were asked at (and their order among those asked at that update): k counts
+    a run's own requests, so it drifts between runs whose schedules differ."""
+    out, seen = {}, {}
+    for d in decisions:
+        u = d["asked_at"] if _number(d.get("asked_at")) else None
+        seen[u] = seen.get(u, -1) + 1
+        out[(u, seen[u])] = d
+    return out
 
 
 def compare(a, b) -> dict:
-    """Two snapshots and the decisions whose outcomes differ (empty when either side has no decision list)."""
+    """Two snapshots and the decisions that differ, matched by the update they were asked at: asked in one run only,
+    or with different outcomes (empty when either side has no run folder)."""
     left, right = load_side(a), load_side(b)
-    differ = []
+    differ, same = [], 0
     if left["kind"] == "run" and right["kind"] == "run":
-        by_b = {d["k"]: d for d in right["decisions"]}
-        by_a = {d["k"]: d for d in left["decisions"]}
-        for k in sorted(set(by_a) | set(by_b)):
-            da, db = by_a.get(k, {}), by_b.get(k, {})
-            oa, ob = da.get("outcome", "absent"), db.get("outcome", "absent")
-            if oa != ob:
-                differ.append(dict(k=k, a=oa, b=ob, asked_at=da.get("asked_at", db.get("asked_at"))))
-    return dict(a=left, b=right, differing_decisions=differ)
+        by_a, by_b = _by_update(left["decisions"]), _by_update(right["decisions"])
+        for key in sorted(set(by_a) | set(by_b), key=lambda key: (key[0] is None, key[0] or 0, key[1])):
+            da, db = by_a.get(key), by_b.get(key)
+            if da and db and da["outcome"] == db["outcome"]:
+                same += 1
+                continue
+            differ.append(
+                dict(
+                    asked_at=key[0],
+                    a=da["outcome"] if da else None,
+                    a_k=da["k"] if da else None,
+                    b=db["outcome"] if db else None,
+                    b_k=db["k"] if db else None,
+                )
+            )
+    return dict(a=left, b=right, matched_by="asked_at", same_decisions=same, differing_decisions=differ)
+
+
+def jsonable(obj):
+    """obj with NaN and infinite numbers as the strings "nan", "inf" and "-inf", for which JSON has no numbers."""
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [jsonable(v) for v in obj]
+    return obj
 
 
 def _cell(value, kind="plain"):
@@ -205,6 +229,8 @@ def _cell(value, kind="plain"):
     if kind == "wait":
         return f"{value:g} s" if _number(value) else "—"
     if kind == "loss":
+        if isinstance(value, float) and not math.isfinite(value):
+            return str(value)  # nan or inf: the run diverged
         return f"{value:.5g}" if _number(value) else "—"
     if kind == "updates":
         return f"{value:,}" if _number(value) else "—"
@@ -228,72 +254,82 @@ def _cell(value, kind="plain"):
 
 
 def _counts_cell(side):
+    """Asked, applied and failed agent calls, the same for a run folder and a result.json (which has no schedule)."""
     c = side.get("counts") or {}
-    if side["kind"] == "result":
-        parts = []
-        if _number(c.get("asked")):
-            parts.append(f"{c['asked']} asked")
-        if _number(c.get("applied")):
-            parts.append(f"{c['applied']} applied")
-        if _number(c.get("failed")):
-            parts.append(f"{c['failed']} failed")
-        return ", ".join(parts) or "—"
-    if not c:
+    return ", ".join(f"{c[x]} {x}" for x in ("asked", "applied", "failed") if _number(c.get(x))) or "—"
+
+
+def _ended(side):
+    if side["kind"] != "run":
         return "—"
-    return (
-        f"{c.get('scheduled', 0)} scheduled, {c.get('asked', 0)} asked, {c.get('applied', 0)} applied"
-    )
+    if not side.get("finished"):
+        return "no end event yet"  # still training, or stopped without close()
+    at = _cell(side.get("update"), "updates")
+    return f"interrupted at {at}" if side.get("ended") == "interrupted" else f"at update {at}"
+
+
+def _where(side):
+    """The path given, and the run folder a result.json points at."""
+    run = side.get("run")
+    return side["path"] + (f" (run folder {run})" if run and run != side["path"] else "")
+
+
+def _decision(row, side):
+    return f"k={row[side + '_k']} {row[side]}" if row[side] else "not asked"
 
 
 def lines(cmp) -> list:
     """Human lines for `opal compare`, in the same register as `opal show`."""
     a, b = cmp["a"], cmp["b"]
-    out = [f"a: {a['path']}", f"b: {b['path']}"]
+    out = [f"a: {_where(a)}", f"b: {_where(b)}"]
     if a.get("goal") or b.get("goal"):
-        out.append(f"goal a: {a.get('goal') or '—'}")
-        out.append(f"goal b: {b.get('goal') or '—'}")
+        mark = "*" if a.get("goal") != b.get("goal") else " "
+        out.append(f"{mark} goal a: {a.get('goal') or '—'}")
+        out.append(f"{mark} goal b: {b.get('goal') or '—'}")
+    scheduled = [_cell((side.get("counts") or {}).get("scheduled"), "updates") for side in (a, b)]
     rows = [
         ("updates", _cell(a.get("total_updates"), "updates"), _cell(b.get("total_updates"), "updates")),
+        ("ended", _ended(a), _ended(b)),
         ("backend", _cell(a.get("backend")), _cell(b.get("backend"))),
         ("mode", _cell(a.get("blocking"), "mode"), _cell(b.get("blocking"), "mode")),
+        ("scheduled", *scheduled),
         ("decisions", _counts_cell(a), _counts_cell(b)),
         ("cost", _cell(a.get("cost_usd"), "cost"), _cell(b.get("cost_usd"), "cost")),
         ("wait", _cell(a.get("agent_wait_seconds"), "wait"), _cell(b.get("agent_wait_seconds"), "wait")),
         ("last loss", _cell(a.get("last_loss"), "loss"), _cell(b.get("last_loss"), "loss")),
         ("metric", _cell(a.get("metric"), "metric"), _cell(b.get("metric"), "metric")),
     ]
-    if a.get("command") or b.get("command"):
-        rows.append(("command", _cell(a.get("command")), _cell(b.get("command"))))
     width = max(len(name) for name, _, _ in rows)
     col = max(24, max(len(x) for row in rows for x in row[1:]))
     out.append(f"  {'':{width}}  {'a':<{col}}  b")
     for name, left, right in rows:
         mark = "*" if left != right else " "
         out.append(f"{mark} {name:{width}}  {left:<{col}}  {right}")
+    if a.get("command") or b.get("command"):  # below the table: commands are long
+        mark = "*" if a.get("command") != b.get("command") else " "
+        out.append(f"{mark} command a: {_cell(a.get('command'))}")
+        out.append(f"{mark} command b: {_cell(b.get('command'))}")
     for side, label in ((a, "a"), (b, "b")):
         c = side.get("counts") or {}
         if side["kind"] == "run" and c:
             out.append(f"{label}: {describe_counts(c)}")
     if a["kind"] != "run" or b["kind"] != "run":
-        missing = "a" if a["kind"] != "run" else "b"
-        out.append(
-            f"decision-by-decision comparison needs two run folders (events.jsonl); {missing} is a result.json only."
-        )
+        who = "a and b have" if a["kind"] == b["kind"] else "a has" if a["kind"] != "run" else "b has"
+        out.append(f"{who} only a result.json, without its run folder (events.jsonl) here: decisions are not compared.")
         return out
-    differ = cmp["differing_decisions"]
-    n = len(set(d["k"] for d in a["decisions"]) | set(d["k"] for d in b["decisions"]))
-    if not n:
+    differ, same = cmp["differing_decisions"], cmp["same_decisions"]
+    if not differ and not same:
         out.append("no decisions were asked in either run.")
         return out
+    s = "s" if same != 1 else ""
     if not differ:
-        out.append(f"all {n} asked decisions have the same outcome.")
+        out.append(f"all {same} decision{s} asked at the same update{s} in both runs, with the same outcome{s}.")
         return out
-    out.append("decisions that differ:")
-    out.append(f"{'k':>4}  {'asked':>9}  {'a':<11}  b")
+    out.append("decisions that differ, matched by the update they were asked at (k: each run's own decision number):")
+    out.append(f"{'asked':>9}  {'a':<16}  b")
     for row in differ:
-        asked = f"{row['asked_at']:,}" if _number(row.get("asked_at")) else ""
-        out.append(f"{row['k']:>4}  {asked:>9}  {row['a']:<11}  {row['b']}")
-    same = n - len(differ)
+        asked = f"{row['asked_at']:,}" if _number(row.get("asked_at")) else "?"
+        out.append(f"{asked:>9}  {_decision(row, 'a'):<16}  {_decision(row, 'b')}")
     if same:
-        out.append(f"{same} other decision{'s' if same != 1 else ''} match.")
+        out.append(f"{same} other decision{s} asked at the same update{s} in both runs: same outcome{s}.")
     return out

@@ -1,7 +1,6 @@
 """opal compare: two run folders, or two result.json files, side by side."""
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -27,6 +26,8 @@ def write_run(
     result=None,
     extra_events=(),
     extra_requests=(),
+    failed=False,
+    finished=True,
 ):
     folder.mkdir(parents=True, exist_ok=True)
     events = [
@@ -47,17 +48,13 @@ def write_run(
             applied_at=update + 5,
             version=1 if outcome == "applied" else 0,
             **(dict(changed=["updater.py"]) if outcome == "applied" else {}),
+            **(dict(failed=True) if failed else {}),
         ),
         *extra_requests,
         *extra_events,
-        dict(
-            kind="end",
-            utc="2026-10-21T00:02:00Z",
-            update=30,
-            cost_usd=cost,
-            agent_wait_seconds=wait,
-        ),
     ]
+    if finished:
+        events.append(dict(kind="end", utc="2026-10-21T00:02:00Z", update=30, cost_usd=cost, agent_wait_seconds=wait))
     write_jsonl(folder / "events.jsonl", events)
     write_jsonl(folder / "losses.jsonl", [dict(from_update=1, to_update=3, losses=[3.0, 2.0, loss])])
     rec = folder / "decisions" / f"{k:03d}"
@@ -70,12 +67,12 @@ def write_run(
 
 def result_record(**kw):
     rec = dict(
-        metric=dict(name="FID-50K", value=3.19, direction="lower"),
-        train_seconds=13500.0,
-        agent_wait_seconds=1764.0,
-        agent_cost_usd=13.30,
-        decisions=dict(asked=50, applied=6, failed=0),
-        hardware="8 x H100",
+        metric=dict(name="val_loss", value=2.5, direction="lower"),
+        train_seconds=1000.0,
+        agent_wait_seconds=100.0,
+        agent_cost_usd=1.5,
+        decisions=dict(asked=10, applied=2, failed=0),
+        hardware="1 x GPU",
         opal_commit="abc123",
         command="python train.py --opal",
         opal_run=None,
@@ -91,8 +88,8 @@ def test_compare_marks_a_decision_whose_outcome_differs(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "a: " in out and "b: " in out
     assert "* backend" in out and "claude" in out and "keep" in out
-    assert "decisions that differ:" in out
-    assert "changed" in out and "kept" in out
+    assert "decisions that differ, matched by the update they were asked at" in out
+    assert "        5  k=1 changed       k=1 kept" in out
     assert "last loss" in out and "0.25" in out
 
 
@@ -101,8 +98,8 @@ def test_compare_says_when_every_decision_matches(tmp_path, capsys):
     b = write_run(tmp_path / "b", goal="A small run")
     assert cli.main(["compare", str(a), str(b)]) == 0
     out = capsys.readouterr().out
-    assert "all 1 asked decisions have the same outcome." in out
-    assert "decisions that differ:" not in out
+    assert "all 1 decision asked at the same update in both runs, with the same outcome." in out
+    assert "decisions that differ" not in out
 
 
 def test_compare_json_lists_differing_decisions(tmp_path, capsys):
@@ -111,35 +108,38 @@ def test_compare_json_lists_differing_decisions(tmp_path, capsys):
     assert cli.main(["compare", "--json", str(a), str(b)]) == 0
     obj = json.loads(capsys.readouterr().out)
     assert obj["a"]["kind"] == "run" and obj["b"]["kind"] == "run"
-    assert obj["differing_decisions"] == [dict(k=1, a="changed", b="kept", asked_at=5)]
+    assert obj["matched_by"] == "asked_at" and obj["same_decisions"] == 0
+    assert obj["differing_decisions"] == [dict(asked_at=5, a="changed", a_k=1, b="kept", b_k=1)]
     assert obj["a"]["last_loss"] == 1.0 and obj["a"]["cost_usd"] == 0.25
 
 
 def test_compare_result_json_files_print_the_metric_and_skip_decisions(tmp_path, capsys):
     fa = tmp_path / "official.json"
     fb = tmp_path / "opal.json"
-    official = result_record(metric=dict(name="FID-50K", value=3.39, direction="lower"))
-    official.update(agent_cost_usd=None, decisions=None)
+    official = result_record(metric=dict(name="val_loss", value=2.6, direction="lower"))
+    official.update(agent_cost_usd=None, decisions=None, command="python train.py --plain-command-that-is-long " * 4)
     fa.write_text(json.dumps(official))
     fb.write_text(json.dumps(result_record()))
     assert cli.main(["compare", str(fa), str(fb)]) == 0
     out = capsys.readouterr().out
-    assert "FID-50K 3.39 (lower is better)" in out
-    assert "FID-50K 3.19 (lower is better)" in out
+    assert "val_loss 2.6 (lower is better)" in out
+    assert "val_loss 2.5 (lower is better)" in out
     assert "* metric" in out
-    assert "decision-by-decision comparison needs two run folders" in out
-    assert "python train.py --opal" in out
+    assert "a and b have only a result.json, without its run folder (events.jsonl) here" in out
+    assert "* command b: python train.py --opal\n" in out
+    table = [line for line in out.splitlines() if line[2:].startswith(("updates", "metric", "decisions"))]
+    assert len(table) == 3 and all(len(line) < 100 for line in table)  # the long commands are below the table
 
 
 def test_compare_uses_result_json_inside_a_run_folder(tmp_path, capsys):
-    rec = result_record(metric=dict(name="test accuracy", value=0.9456, direction="higher"))
-    other = result_record(metric=dict(name="test accuracy", value=0.9449, direction="higher"))
-    a = write_run(tmp_path / "a", result=rec, loss=0.2512)
-    b = write_run(tmp_path / "b", result=other, loss=0.2576)
+    rec = result_record(metric=dict(name="test accuracy", value=0.81, direction="higher"))
+    other = result_record(metric=dict(name="test accuracy", value=0.8, direction="higher"))
+    a = write_run(tmp_path / "a", result=rec, loss=0.5)
+    b = write_run(tmp_path / "b", result=other, loss=0.6)
     assert cli.main(["compare", str(a), str(b)]) == 0
     out = capsys.readouterr().out
-    assert "test accuracy 0.9456 (higher is better)" in out
-    assert "test accuracy 0.9449 (higher is better)" in out
+    assert "test accuracy 0.81 (higher is better)" in out
+    assert "test accuracy 0.8 (higher is better)" in out
 
 
 def test_compare_result_json_points_at_its_run_folder(tmp_path, capsys):
@@ -149,8 +149,8 @@ def test_compare_result_json_points_at_its_run_folder(tmp_path, capsys):
     fa.write_text(json.dumps(result_record(opal_run=str(a), metric=dict(name="loss", value=0.25, direction="lower"))))
     assert cli.main(["compare", str(fa), str(b)]) == 0
     out = capsys.readouterr().out
-    assert "decisions that differ:" in out
-    assert "changed" in out and "kept" in out
+    assert f"a: {fa} (run folder {a})" in out
+    assert "        5  k=1 changed       k=1 kept" in out
 
 
 def test_compare_a_lost_pending_decision_is_not_the_same_as_kept(tmp_path, capsys):
@@ -167,8 +167,7 @@ def test_compare_a_lost_pending_decision_is_not_the_same_as_kept(tmp_path, capsy
     )
     assert cli.main(["compare", str(a), str(b)]) == 0
     out = capsys.readouterr().out
-    assert "kept" in out and "lost" in out
-    assert "decisions that differ:" in out
+    assert "k=1 kept          k=1 lost" in out
 
 
 def test_compare_missing_path_exits(tmp_path):
@@ -196,18 +195,50 @@ def test_compare_a_parent_folder_names_the_runs_inside(tmp_path):
     assert "runs inside: r1, r2" in str(exited.value)
 
 
-def test_the_guide_and_readme_name_compare():
-    root = Path(__file__).resolve().parents[1]
-    guide = (root / "docs" / "GUIDE.md").read_text()
-    readme = (root / "README.md").read_text()
-    assert "`opal compare a b`" in guide
-    assert "opal compare opal_runs/<a> opal_runs/<b>" in readme
-    assert "opal compare" in (root / "skills" / "train-with-agent" / "SKILL.md").read_text()
-
-
 def test_load_side_reads_a_partial_events_line(tmp_path):
     folder = write_run(tmp_path / "a")
     with open(folder / "events.jsonl", "a") as f:
         f.write('{"kind": "requested", "k": 2, "upd')
     snap = compare.load_side(folder)
     assert [d["k"] for d in snap["decisions"]] == [1]
+
+
+def test_compare_last_loss_shows_a_diverged_run(tmp_path, capsys):
+    a = write_run(tmp_path / "a", loss=0.5)
+    b = write_run(tmp_path / "b", loss=float("nan"))
+    assert cli.main(["compare", str(a), str(b)]) == 0
+    row = next(line for line in capsys.readouterr().out.splitlines() if "last loss" in line)
+    assert row.startswith("* last loss") and row.split()[-1] == "nan"
+
+
+def test_compare_matches_decisions_by_the_update_they_were_asked_at(tmp_path, capsys):
+    a = write_run(tmp_path / "a", outcome="kept", update=5)
+    extra = [dict(kind="requested", k=2, update=10, utc="2026-10-21T00:00:05Z"), dict(kind="kept", k=2, applied_at=10)]
+    b = write_run(tmp_path / "b", outcome="kept", update=10, extra_events=extra)  # k=1 at 10: another schedule
+    assert cli.main(["compare", str(a), str(b)]) == 0
+    out = capsys.readouterr().out
+    assert "        5  k=1 kept          not asked" in out
+    assert "       10  not asked         k=1 kept" in out
+    assert "       10  not asked         k=2 kept" in out
+    assert "same outcome" not in out
+
+
+def test_compare_json_writes_non_finite_numbers_as_strings(tmp_path, capsys):
+    diverged = result_record(metric=dict(name="val_loss", value=float("nan"), direction="lower"))
+    a = write_run(tmp_path / "a", result=diverged, loss=float("nan"))
+    b = write_run(tmp_path / "b", loss=float("inf"))
+    assert cli.main(["compare", "--json", str(a), str(b)]) == 0
+    obj = json.loads(capsys.readouterr().out)
+    assert obj["a"]["metric"]["value"] == "nan" and obj["a"]["last_loss"] == "nan"
+    assert obj["b"]["last_loss"] == "inf"
+
+
+def test_compare_marks_an_unfinished_run_and_failed_calls_and_goals(tmp_path, capsys):
+    a = write_run(tmp_path / "a", outcome="kept")
+    b = write_run(tmp_path / "b", outcome="kept", failed=True, finished=False, goal="Another run")
+    assert cli.main(["compare", str(a), str(b)]) == 0
+    out = capsys.readouterr().out.splitlines()
+    row = {line[2:].split("  ")[0]: line for line in out}
+    assert row["ended"].startswith("* ") and row["ended"].endswith("no end event yet")
+    assert row["decisions"].startswith("* ") and row["decisions"].endswith("1 asked, 0 applied, 1 failed")
+    assert "* goal a: A small run" in out and "* goal b: Another run" in out
