@@ -44,7 +44,7 @@ def _show(run):
     print(f"run {run}")
     if start.get("goal"):
         print(f"goal: {start['goal']}")
-    from .report import decision_counts, describe_counts, rank_repair_summary
+    from .report import decision_counts, describe_counts, end_cost, outcome_label, rank_repair_summary
 
     mode = start.get("blocking")
     mode = "auto-blocking" if mode == "auto" else "blocking" if mode else "non-blocking"
@@ -64,15 +64,7 @@ def _show(run):
         o = out.get(k, {})
         resp = _response(run, k)
         said = " ".join((resp.get("text") or "").split())[:70]
-        kind = o.get("kind", "pending")
-        if kind == "pending" and any(
-            e["kind"] in ("resumed", "end") and e.get("utc", "") > req[k].get("utc", "") for e in events
-        ):
-            kind = "lost"
-        if kind == "applied":
-            kind = "changed"
-        elif o.get("failed") and not o.get("gave_up"):
-            kind = "failed"
+        kind = outcome_label(events, req[k], o)
         cost = resp.get("cost_usd")
         print(
             f"{k:>4}  {req[k]['update']:>9,}  {kind:<11} {o.get('applied_at', ''):>9}  "
@@ -83,11 +75,7 @@ def _show(run):
             print(f"{e['kind']} at update {e.get('update')}")
     end = next((e for e in reversed(events) if e["kind"] == "end"), None)
     if end:
-        tokens = "usage" in end or start.get("backend") == "codex"
-        cost = "USD unavailable" if tokens and end.get("cost_usd") is None else f"${end.get('cost_usd') or 0:.2f}"
-        print(
-            f"finished at update {end['update']:,}; {end.get('decisions')} decisions; {cost}"
-        )
+        print(f"finished at update {end['update']:,}; {end.get('decisions')} decisions; {end_cost(start, end)}")
 
 
 def doctor_mailbox(spec):
