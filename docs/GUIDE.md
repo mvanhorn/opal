@@ -12,6 +12,7 @@ decision and at the end of the run.
 
 `opal show <folder>` prints one line per decision: when it was asked, what happened, its time and cost, and the start
 of the rationale. `opal watch <folder>` prints each event as `events.jsonl` grows, and returns when the run finishes.
+A run killed without `close()` (SIGTERM, SIGKILL, out of memory) never writes its end, so give it `--timeout`.
 `--timeout 0` prints what is already there. `opal report <folder>` rebuilds the page at any time. Every program
 version is in `programs/`. Each decision's message and answer are in `decisions/`. Events are in `events.jsonl`.
 

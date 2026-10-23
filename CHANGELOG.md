@@ -3,7 +3,8 @@
 ## Unreleased
 
 - `opal watch <run>` prints a run's events as they are written and returns when the run finishes. `--timeout 0`
-  prints what is already there; a positive `--timeout` is idle seconds after the last new event.
+  prints what is already there; a positive `--timeout` is idle seconds after the last new event. A run killed without
+  `close()` (SIGTERM, SIGKILL, out of memory) never writes its end, so it needs `--timeout`; watch then exits with 1.
 
 ## 0.3.7 (2026-10-22)
 
