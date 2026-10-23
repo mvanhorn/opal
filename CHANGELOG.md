@@ -3,7 +3,7 @@
 ## Unreleased
 
 - `opal compare a b` prints two run folders, or two result.json files, side by side: metric, command, decision counts,
-  cost, waiting, last training loss, and each decision whose outcome differs.
+  cost, waiting, last training loss, and the decisions that differ, matched by the update they were asked at.
 
 ## 0.3.7 (2026-10-22)
 

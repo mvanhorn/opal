@@ -12,9 +12,9 @@ decision and at the end of the run.
 
 `opal show <folder>` prints one line per decision: when it was asked, what happened, its time and cost, and the start
 of the rationale. `opal report <folder>` rebuilds the page at any time. `opal compare a b` sets two run folders, or
-two `result.json` files, beside each other: metric, command, decision counts, cost, waiting, and each decision whose
-outcome differs. Every program version is in `programs/`. Each decision's message and answer are in `decisions/`.
-Events are in `events.jsonl`.
+two `result.json` files, beside each other: metric, command, decision counts, cost, waiting, and the decisions that
+differ, matched by the update they were asked at. Every program version is in `programs/`. Each decision's message and
+answer are in `decisions/`. Events are in `events.jsonl`.
 
 ## How it works
 
@@ -346,8 +346,8 @@ The first fields are shared: metric name, value and direction, training and wait
 asked, applied and failed, hardware, OPAL commit, full command and run folder. Plain runs have the same fields with
 the OPAL fields empty. `--save <folder>` writes `model.pt` and, for scripts that keep an EMA, `ema.pt`.
 `opal compare a b` sets two result.json files, or two run folders, beside each other. It prints the metric and
-command, decision counts, cost and waiting, and one line per decision whose outcome differs. `--json` prints the same
-as JSON. Read one run with `opal show <run folder>`.
+command, decision counts, cost and waiting and, when both run folders are on this machine, the decisions that differ,
+matched by the update they were asked at. `--json` prints the same as JSON. Read one run with `opal show <run folder>`.
 
 Our run folders are not published. `opal.replay("<run folder>", optimizer, model, total_steps=...)` reruns the final
 program of one of your own runs in place of `opal.wrap(...)`. It runs the version named by `FINAL` deterministically.
