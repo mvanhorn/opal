@@ -439,10 +439,15 @@ def main(argv=None):
             cmp = compare.compare(a.a, a.b)
         except (FileNotFoundError, ValueError) as exc:
             sys.exit(str(exc))
-        if a.json:
-            print(json.dumps(compare.jsonable(cmp), default=str, allow_nan=False, indent=2))
-        else:
-            print("\n".join(compare.lines(cmp)))
+        try:
+            if a.json:
+                print(json.dumps(compare.jsonable(cmp), default=str, allow_nan=False, indent=2))
+            else:
+                print("\n".join(compare.lines(cmp)))
+        except BrokenPipeError:  # the reader went away (| head): stop quietly, as opal watch does
+            import os
+
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())  # so the exit flush cannot fail again
     return 0
 
 

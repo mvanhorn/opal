@@ -242,3 +242,31 @@ def test_compare_marks_an_unfinished_run_and_failed_calls_and_goals(tmp_path, ca
     assert row["ended"].startswith("* ") and row["ended"].endswith("no end event yet")
     assert row["decisions"].startswith("* ") and row["decisions"].endswith("1 asked, 0 applied, 1 failed")
     assert "* goal a: A small run" in out and "* goal b: Another run" in out
+
+
+def test_compare_finds_a_relative_opal_run_beside_its_result_json(tmp_path, monkeypatch, capsys):
+    # examples/overfit writes opal_run=<out>/opal relative to where training ran; compare from elsewhere
+    for name, outcome in (("a", "applied"), ("b", "kept")):
+        out = tmp_path / "runs" / name
+        write_run(out / "opal", outcome=outcome)
+        (out / "result.json").write_text(json.dumps(result_record(opal_run=f"runs/{name}/opal")))
+    monkeypatch.chdir(tmp_path / "runs")
+    assert cli.main(["compare", "a", "b"]) == 0
+    out = capsys.readouterr().out
+    assert "a: a/result.json (run folder a/opal)" in out
+    assert "        5  k=1 changed       k=1 kept" in out
+
+
+def test_compare_stops_quietly_when_the_reader_closes_the_pipe(tmp_path):
+    import subprocess
+    import sys
+
+    many = [dict(kind="requested", k=k, update=k * 10, utc="2026-10-21T00:00:01Z") for k in range(2, 3000)]
+    a = write_run(tmp_path / "a", extra_requests=many)  # far more output than a pipe buffer holds
+    b = write_run(tmp_path / "b")
+    cmd = [sys.executable, "-m", "opal.cli", "compare", "--json", str(a), str(b)]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert proc.stdout.readline().startswith("{")
+    proc.stdout.close()  # what `| head -1` does
+    assert proc.wait(timeout=60) == 0
+    assert "Traceback" not in proc.stderr.read()

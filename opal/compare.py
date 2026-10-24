@@ -54,9 +54,11 @@ def _from_result_file(path: Path):
         raise ValueError(f"opal: not a result.json: {path} (missing metric)")
     run = None
     listed = obj.get("opal_run")
-    if isinstance(listed, str) and listed and (Path(listed) / "events.jsonl").exists():
-        run = Path(listed)
-    elif (path.parent / "events.jsonl").exists():
+    if isinstance(listed, str) and listed:
+        # as written (absolute, or relative to where training ran), else by name beside this result.json:
+        # examples/overfit writes a relative <out>/opal, read from any folder
+        run = next((d for d in (Path(listed), path.parent / Path(listed).name) if (d / "events.jsonl").exists()), None)
+    if run is None and (path.parent / "events.jsonl").exists():
         run = path.parent
     if run is not None:
         return dict(snapshot(run, result=obj), path=str(path))
